@@ -1,4 +1,4 @@
-/* 걱정인형 — 세 줄 기록 + LLM 피드백 클라이언트 로직 */
+/* K직장인용 걱정인형 — 세 줄 기록 + LLM 피드백 클라이언트 로직 */
 
 const STORAGE_KEYS = {
   entries: "worrydoll.entries.v1",
@@ -87,7 +87,7 @@ form.addEventListener("submit", async (e) => {
   const label = submitBtn.querySelector(".btn-label");
   const original = label.textContent;
   submitBtn.disabled = true;
-  label.innerHTML = '걱정인형이 생각 중이에요<span class="loading-dots"></span>';
+  label.innerHTML = 'K직장인용 걱정인형이 생각 중이에요<span class="loading-dots"></span>';
 
   try {
     const res = await fetch("/api/analyze", {

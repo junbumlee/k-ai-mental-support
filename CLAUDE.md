@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 프로젝트 개요
 
-**걱정인형 (Worry Doll)** — CBT(인지행동치료) 기반 직장인 심리 케어 웹앱. 세줄일기 스타일 문답 UI로 "상황/자동화 사고/재구성" 3줄을 기록하면 Claude LLM이 CBT 왜곡 유형을 짚고 되묻기 형식 피드백을 제공.
+**K직장인용 걱정인형 (Worry Doll)** — CBT(인지행동치료) 기반 직장인 심리 케어 웹앱. 세줄일기 스타일 문답 UI로 "상황/자동화 사고/재구성" 3줄을 기록하면 Claude LLM이 CBT 왜곡 유형을 짚고 되묻기 형식 피드백을 제공.
 
 ## 기술 스택
 

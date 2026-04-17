@@ -1,4 +1,4 @@
-# 걱정인형 (Worry Doll)
+# K직장인용 걱정인형 (Worry Doll)
 
 직장인을 위한 AI 기반 CBT(인지행동치료) 심리 케어 서비스. 회사별이 아닌 **고민 유형별**로 사용자를 연결해 블라인드·세줄일기와 차별화하고, 인사담당자 출신 상담사 코칭으로 수익화를 계획.
 
@@ -26,7 +26,7 @@ k-ai-mental-support/
 ├── api/
 │   └── index.py          # FastAPI 엔트리 (Vercel 서버리스 함수)
 ├── templates/
-│   └── index.html        # 걱정인형 메인 페이지
+│   └── index.html        # K직장인용 걱정인형 메인 페이지
 ├── static/
 │   ├── style.css
 │   └── app.js            # 기록/피드백/로컬 저장 로직

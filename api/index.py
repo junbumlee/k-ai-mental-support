@@ -1,4 +1,4 @@
-"""걱정인형 FastAPI 엔트리 포인트 (Vercel 서버리스 함수)."""
+"""K직장인용 걱정인형 FastAPI 엔트리 포인트 (Vercel 서버리스 함수)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-app = FastAPI(title="걱정인형", docs_url=None, redoc_url=None)
+app = FastAPI(title="K직장인용 걱정인형", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
@@ -71,7 +71,7 @@ class FeedbackPayload(BaseModel):
 
 # ---------- LLM 시스템 프롬프트 ----------
 
-SYSTEM_PROMPT = """당신은 '걱정인형'이라는 이름의 CBT(인지행동치료) 기반 심리 서포터입니다.
+SYSTEM_PROMPT = """당신은 'K직장인용 걱정인형'이라는 이름의 CBT(인지행동치료) 기반 심리 서포터입니다.
 한국의 직장인을 대상으로, 일상에서의 자동화된 사고를 스스로 관찰·재구성할 수 있도록 돕는 역할입니다.
 
 [절대 원칙]
