@@ -30,6 +30,31 @@ vercel              # 프리뷰
 vercel --prod       # 프로덕션
 ```
 
+## Vercel 운영 가이드
+
+- **정본 프로젝트는 하나만 유지**: Vercel 프로젝트명은 `k-ai-mental-support`, 대표 주소는 `https://k-ai-mental-support.vercel.app`
+- 비슷한 이름의 중복 프로젝트를 새로 만들지 말 것. 배포 전에 현재 링크를 먼저 확인:
+
+```bash
+cat .vercel/project.json
+```
+
+- 로컬 링크가 꼬였거나 Vercel 프로젝트를 삭제/재생성한 뒤에는 반드시 다시 동기화:
+
+```bash
+vercel pull --yes --environment production
+vercel pull --yes --environment preview
+```
+
+- 배포 후 현재 프로덕션 alias 확인:
+
+```bash
+vercel inspect k-ai-mental-support.vercel.app
+```
+
+- `vercel build`가 로컬에 `pyproject.toml`, `uv.lock`를 임시 생성할 수 있음. 이 저장소의 기준 의존성 파일은 `requirements.txt`이며, 임시 파일은 커밋하지 말 것.
+- `.vercel/` 디렉터리는 로컬 링크/환경변수 캐시용이다. Git에는 올리지 않는다.
+
 LLM 피드백 활성화에는 `MINIMAX_API_KEY` 환경변수 필요 (옵션: `MINIMAX_MODEL`, `MINIMAX_BASE_URL`). 미설정 시 `api/index.py`의 `_fallback_feedback()`이 템플릿 응답을 반환 — UI 흐름은 막히지 않음.
 
 ## 아키텍처
