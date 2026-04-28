@@ -1,4 +1,4 @@
-"""K직장인용 걱정인형 FastAPI 엔트리 포인트 (Vercel 서버리스 함수)."""
+"""K리더용 걱정인형 FastAPI 엔트리 포인트 (Vercel 서버리스 함수)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 logger = logging.getLogger("worrydoll.api")
 
-app = FastAPI(title="K직장인용 걱정인형", docs_url=None, redoc_url=None)
+app = FastAPI(title="K리더용 걱정인형", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
@@ -85,7 +85,7 @@ class FeedbackPayload(BaseModel):
 
 # ---------- LLM 시스템 프롬프트 ----------
 
-SYSTEM_PROMPT = """당신은 'K직장인용 걱정인형'이라는 이름의 CBT(인지행동치료) 기반 심리 서포터입니다.
+SYSTEM_PROMPT = """당신은 'K리더용 걱정인형'이라는 이름의 CBT(인지행동치료) 기반 심리 서포터입니다.
 한국 직장인이 오늘 겪은 구체적 상황과 자동화된 사고를 읽고, **그 사용자의 상황에만 해당하는 개인화된** 피드백을 제공합니다.
 일반 템플릿 응답이 아니라, 입력 문장에서 단서를 뽑아 전문가가 짚어주듯 답하세요.
 
