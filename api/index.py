@@ -59,6 +59,18 @@ class DiaryEntry(BaseModel):
     thought: str = Field(..., min_length=1, max_length=1000, description="자동화 사고")
     reframe: str = Field("", max_length=1000, description="재구성 시도")
     job_role: Optional[str] = Field(None, max_length=60, description="직무/연차 컨텍스트")
+    category: Optional[str] = Field(None, max_length=20, description="리더 상황 카테고리")
+
+
+# 클라이언트가 보내는 카테고리 라벨 → LLM에 주입할 한 줄 컨텍스트.
+# 시스템 프롬프트는 변경하지 않고, 사용자 블록 앞에 prefix로만 붙인다.
+CATEGORY_HINTS = {
+    "성과 압박":  "사용자가 오늘 '성과 압박' 맥락에서 이 일을 떠올렸습니다. 매출·KPI·평가지표 같은 숫자 부담을 염두에 두고 읽어주세요.",
+    "팀원 관리":  "사용자가 오늘 '팀원 관리' 맥락에서 이 일을 떠올렸습니다. 팀원의 행동·태도·동기에 대한 리더로서의 해석을 염두에 두고 읽어주세요.",
+    "평가·고과":  "사용자가 오늘 '평가·고과' 맥락에서 이 일을 떠올렸습니다. 인사평가·면담·승진 결정과 관련된 부담을 염두에 두고 읽어주세요.",
+    "상사·보고":  "사용자가 오늘 '상사·보고' 맥락에서 이 일을 떠올렸습니다. 보고·발표·의사결정자 앞에 서는 상황의 압박을 염두에 두고 읽어주세요.",
+    "팀 내 갈등": "사용자가 오늘 '팀 내 갈등' 맥락에서 이 일을 떠올렸습니다. 동료·팀원 간 의견 충돌·관계 긴장을 염두에 두고 읽어주세요.",
+}
 
 
 class FeedbackPayload(BaseModel):
@@ -199,7 +211,10 @@ def _scrub_payload(p: FeedbackPayload) -> FeedbackPayload:
 
 
 def _build_user_block(entry: DiaryEntry) -> str:
+    hint = CATEGORY_HINTS.get((entry.category or "").strip()) if entry.category else None
+    prefix = f"[상황 맥락]\n{hint}\n\n" if hint else ""
     return (
+        f"{prefix}"
         f"[상황]\n{entry.situation}\n\n"
         f"[그때 떠오른 생각]\n{entry.thought}\n\n"
         f"[스스로 시도한 재구성]\n{entry.reframe or '(작성하지 않음)'}\n\n"

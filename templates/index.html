@@ -30,6 +30,14 @@
       <!-- 쓰기 -->
       <section class="panel active" data-panel="write">
         <form id="diary-form" class="card">
+          <div class="field category-field">
+            <label>
+              <span class="q-index">·</span>
+              오늘은 어떤 자리에서의 일이었나요? <span class="optional">(리더 상황 선택)</span>
+            </label>
+            <div id="category-row" class="category-row" role="radiogroup" aria-label="리더 상황 카테고리"></div>
+          </div>
+
           <div class="field">
             <label for="situation">
               <span class="q-index">1</span>
@@ -144,6 +152,7 @@
     <article class="entry-card">
       <header class="entry-header">
         <time></time>
+        <span class="entry-category hidden"></span>
         <button type="button" class="delete-btn" aria-label="삭제">×</button>
       </header>
       <div class="entry-body">
