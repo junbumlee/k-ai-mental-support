@@ -291,9 +291,9 @@ async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
         if result is None:
             return None
 
-        # 가드레일 1·2: 금지 문자가 있으면 이전 응답을 assistant 메시지로 인용하고
-        # 온도를 낮추며 최대 2회까지 재시도.
-        for attempt in range(1, 3):
+        # 가드레일: 금지 문자가 있으면 이전 응답을 assistant 메시지로 인용하고
+        # 온도를 낮추며 1회 재시도. 그래도 남으면 NVIDIA 폴백으로 위임 (지연 보호).
+        for attempt in range(1, 2):
             if not _has_forbidden(result):
                 break
             prev_bad = json.dumps(
