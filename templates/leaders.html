@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#3b76c4" />
+  <title>걱정인형: 리더스 · 리더를 위한 AI 시크릿 멘토</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/leaders.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;500;700&display=swap" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <a class="back-link" href="/">← 일반 버전으로</a>
+      <div class="brand">
+        <span class="brand-dot" aria-hidden="true"></span>
+        <h1>걱정인형</h1>
+        <span class="brand-badge">LEADERS</span>
+      </div>
+      <p class="tagline">리더의 고민을 위한 AI 시크릿 멘토</p>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="write" role="tab">털어놓기</button>
+      <button class="tab" data-tab="list" role="tab">기록</button>
+      <button class="tab" data-tab="settings" role="tab">내 정보</button>
+    </nav>
+
+    <main>
+      <!-- 털어놓기 -->
+      <section class="panel active" data-panel="write">
+        <form id="leader-form" class="card">
+          <div class="field">
+            <label for="situation">
+              <span class="q-index">1</span>
+              오늘 팀을 이끌며 가장 무거웠던 순간은?
+            </label>
+            <div class="input-row">
+              <textarea id="situation" name="situation" rows="2" placeholder="예: 팀원이 1on1에서 업무량이 너무 많다고 했는데 내가 줄여줄 여력이 없었다" required></textarea>
+              <button type="button" class="stt-btn" data-target="situation" title="음성 입력" aria-label="음성 입력">🎙️</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="thought">
+              <span class="q-index">2</span>
+              그 순간 어떤 생각이 떠올랐나요?
+            </label>
+            <div class="input-row">
+              <textarea id="thought" name="thought" rows="2" placeholder="예: 내가 팀원을 지키지 못하고 있다. 이 팀원이 퇴사하면 내 리더십 실패다" required></textarea>
+              <button type="button" class="stt-btn" data-target="thought" title="음성 입력" aria-label="음성 입력">🎙️</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="reframe">
+              <span class="q-index">3</span>
+              그 생각을 다르게 본다면? <span class="optional">(비워도 돼요)</span>
+            </label>
+            <div class="input-row">
+              <textarea id="reframe" name="reframe" rows="2" placeholder="예: 팀원의 역량을 믿고 권한을 넘겨볼 수도 있다"></textarea>
+              <button type="button" class="stt-btn" data-target="reframe" title="음성 입력" aria-label="음성 입력">🎙️</button>
+            </div>
+          </div>
+
+          <button type="submit" class="primary-btn" id="submit-btn">
+            <span class="btn-label">리더스 걱정인형에게 털어놓기</span>
+          </button>
+        </form>
+
+        <div id="feedback" class="feedback hidden" aria-live="polite"></div>
+      </section>
+
+      <!-- 기록 -->
+      <section class="panel" data-panel="list">
+        <div id="entries" class="entries"></div>
+        <p id="empty-state" class="empty">아직 기록된 고민이 없어요. 오늘의 리더십 고민을 털어놔보세요.</p>
+      </section>
+
+      <!-- 내 정보 -->
+      <section class="panel" data-panel="settings">
+        <div class="card">
+          <h2>내 정보</h2>
+          <div class="field">
+            <label for="role-level">직급 <span class="optional">(피드백에 참고)</span></label>
+            <input id="role-level" type="text" placeholder="예: 신임 팀장 1년차, 팀장 후보자" />
+          </div>
+          <div class="field">
+            <label for="team-size">팀 규모 <span class="optional">(피드백에 참고)</span></label>
+            <input id="team-size" type="text" placeholder="예: 5명, 10명 이상" />
+          </div>
+          <div class="field">
+            <label for="industry">업종 <span class="optional">(피드백에 참고)</span></label>
+            <input id="industry" type="text" placeholder="예: IT, 제조, 금융, 마케팅" />
+          </div>
+          <button type="button" class="primary-btn" id="save-profile">저장</button>
+        </div>
+
+        <div class="card subtle">
+          <h2>데이터 관리</h2>
+          <p class="muted">모든 기록은 이 브라우저에만 저장돼요. 서버로 전송되는 건 피드백 요청 순간의 텍스트뿐입니다.</p>
+          <button type="button" class="ghost-btn" id="clear-all">전체 기록 삭제</button>
+        </div>
+
+        <div class="card subtle">
+          <h2>도움이 필요하다면</h2>
+          <ul class="hotlines">
+            <li>자살예방상담전화 <a href="tel:1393">1393</a></li>
+            <li>정신건강위기상담전화 <a href="tel:1577-0199">1577-0199</a></li>
+            <li>한국생명의전화 <a href="tel:1588-9191">1588-9191</a></li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <small>걱정인형: 리더스는 의료기기가 아니며 진단·치료를 제공하지 않아요.</small>
+    </footer>
+  </div>
+
+  <template id="feedback-template">
+    <div class="feedback-card">
+      <div class="feedback-section empathy"></div>
+      <div class="feedback-section distortions hidden">
+        <h3>살펴볼 만한 리더십 사고 패턴</h3>
+        <div class="chip-row"></div>
+      </div>
+      <div class="feedback-section reframe">
+        <h3>리더스 걱정인형의 되묻기</h3>
+        <p class="reframe-text"></p>
+      </div>
+      <div class="feedback-section question">
+        <h3>이번 주 현장에서 해볼 수 있는 것</h3>
+        <p class="question-text"></p>
+      </div>
+      <div class="feedback-actions">
+        <button type="button" class="primary-btn" data-action="save">기록 저장</button>
+        <button type="button" class="ghost-btn" data-action="discard">다시 쓰기</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="crisis-template">
+    <div class="feedback-card crisis">
+      <h3>혼자 감당하지 마세요</h3>
+      <p class="crisis-message"></p>
+      <ul class="hotlines"></ul>
+    </div>
+  </template>
+
+  <template id="entry-template">
+    <article class="entry-card">
+      <header class="entry-header">
+        <time></time>
+        <button type="button" class="delete-btn" aria-label="삭제">×</button>
+      </header>
+      <div class="entry-body">
+        <p class="entry-situation"></p>
+        <p class="entry-thought"></p>
+        <p class="entry-reframe"></p>
+      </div>
+      <footer class="entry-feedback"></footer>
+    </article>
+  </template>
+
+  <script src="/static/leaders.js"></script>
+</body>
+</html>

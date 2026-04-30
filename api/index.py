@@ -135,7 +135,7 @@ SYSTEM_PROMPT = """당신은 'K직장인용 걱정인형'이라는 이름의 CBT
 
 # ---------- 유틸 ----------
 
-def _fallback_feedback(entry: DiaryEntry) -> FeedbackPayload:
+def _fallback_feedback() -> FeedbackPayload:
     """API 키가 없거나 LLM 호출 실패 시 기본 템플릿 피드백."""
     return FeedbackPayload(
         mode="fallback",
@@ -218,7 +218,7 @@ def _parse_feedback_json(content: str) -> FeedbackPayload:
     )
 
 
-async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
+async def _call_minimax(system_prompt: str, user_block: str) -> Optional[FeedbackPayload]:
     """MiniMax 1차 시도. 성공 시 FeedbackPayload, 실패 시 None(→ NVIDIA로 폴백)."""
     api_key = os.environ.get("MINIMAX_API_KEY")
     if not api_key:
@@ -228,11 +228,10 @@ async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
     base_url = os.environ.get("MINIMAX_BASE_URL", MINIMAX_DEFAULT_BASE_URL).rstrip("/")
     model = os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL)
 
-    user_block = _build_user_block(entry)
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_block},
         ],
         "max_tokens": 4096,
@@ -315,16 +314,11 @@ async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
             return None
         return result
     except Exception:
-        logger.exception(
-            "MiniMax call failed for situation=%r thought=%r job_role=%r",
-            entry.situation[:120],
-            entry.thought[:120],
-            (entry.job_role or "")[:60],
-        )
+        logger.exception("MiniMax call failed: %r", user_block[:120])
         return None
 
 
-async def _call_nvidia(entry: DiaryEntry) -> Optional[FeedbackPayload]:
+async def _call_nvidia(system_prompt: str, user_block: str) -> Optional[FeedbackPayload]:
     """NVIDIA(moonshotai/kimi-k2.5) 2차 폴백. OpenAI 호환 엔드포인트."""
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
@@ -336,8 +330,8 @@ async def _call_nvidia(entry: DiaryEntry) -> Optional[FeedbackPayload]:
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": _build_user_block(entry)},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_block},
         ],
         "max_tokens": 4096,
         "temperature": 0.3,
@@ -366,12 +360,7 @@ async def _call_nvidia(entry: DiaryEntry) -> Optional[FeedbackPayload]:
             result = _scrub_payload(result)
         return result
     except Exception:
-        logger.exception(
-            "NVIDIA call failed for situation=%r thought=%r job_role=%r",
-            entry.situation[:120],
-            entry.thought[:120],
-            (entry.job_role or "")[:60],
-        )
+        logger.exception("NVIDIA call failed: %r", user_block[:120])
         return None
 
 
@@ -413,9 +402,8 @@ def _normalize_text(s: str) -> str:
     return s
 
 
-def _contains_crisis(entry: DiaryEntry) -> bool:
-    blob = f"{entry.situation}\n{entry.thought}\n{entry.reframe}"
-    return bool(_CRISIS_RE.search(blob))
+def _contains_crisis(text: str) -> bool:
+    return bool(_CRISIS_RE.search(text))
 
 
 # ---------- 라우트 ----------
@@ -442,15 +430,109 @@ async def health() -> dict:
 
 @app.post("/api/analyze")
 async def analyze(entry: DiaryEntry) -> JSONResponse:
-    if _contains_crisis(entry):
+    text = f"{entry.situation}\n{entry.thought}\n{entry.reframe}"
+    if _contains_crisis(text):
         return JSONResponse(CRISIS_RESPONSE)
 
+    user_block = _build_user_block(entry)
     # 1차: MiniMax → 2차: NVIDIA kimi → 최후: 템플릿
-    result = await _call_minimax(entry)
+    result = await _call_minimax(SYSTEM_PROMPT, user_block)
     if result is None:
         logger.info("Primary provider failed; trying NVIDIA fallback")
-        result = await _call_nvidia(entry)
+        result = await _call_nvidia(SYSTEM_PROMPT, user_block)
     if result is None:
         logger.info("All providers failed; returning template fallback")
-        result = _fallback_feedback(entry)
+        result = _fallback_feedback()
+    return JSONResponse(result.model_dump())
+
+
+# ---------- 리더스 ----------
+
+class LeaderEntry(BaseModel):
+    situation: str = Field(..., min_length=1, max_length=1000, description="상황")
+    thought: str = Field(..., min_length=1, max_length=1000, description="자동화 사고")
+    reframe: str = Field("", max_length=1000, description="재구성 시도")
+    role_level: Optional[str] = Field(None, max_length=60, description="직급")
+    team_size: Optional[str] = Field(None, max_length=30, description="팀 규모")
+    industry: Optional[str] = Field(None, max_length=60, description="업종")
+
+
+LEADER_SYSTEM_PROMPT = """당신은 '걱정인형: 리더스'라는 이름의 CBT(인지행동치료) 기반 리더십 심리 서포터입니다.
+신임 팀장, 팀장 후보자가 직장에서 겪은 구체적 상황과 자동화된 사고를 읽고,
+**그 리더의 상황에만 해당하는 개인화된** 피드백을 제공합니다.
+
+[절대 원칙]
+1. 진단하지 않습니다 ("번아웃", "우울증", "불안장애" 등 병명 금지).
+2. 리더의 사고를 대신 재구성하지 않습니다. 반드시 '질문'으로 돌려주세요.
+3. 판단·훈계·충고 금지. 공감과 선택지 제시.
+4. 자해·자살 신호가 있으면 전문 상담 연결만 권하고 분석은 중단.
+
+[개인화 강제 규칙 — 반드시 준수]
+- **empathy**: [오늘의 상황] 문장에서 구체 명사(예: "팀원", "1on1", "성과보고", "인사평가", "KPI", "팀장 회의")를 1개 이상 **그대로 인용**해 공감을 표현합니다. "그런 일이 있으셨군요" 같은 추상적 위로는 금지.
+- **distortions**: [그때 떠오른 생각] 문장을 실제 단서로만 분석합니다.
+    · "내가 다 해야 한다", "내가 직접 하는 게 낫다" → '완벽주의·통제' (당위 진술 + 개인화)
+    · "팀원이 나를 무시하는 것 같다", "상사가 내 능력을 의심한다" → '독심술'
+    · "이 결정 하나가 잘못되면 팀 전체가 끝난다" → '파국화'
+    · "팀 성과가 나쁜 건 내 탓이다" → '개인화'
+    · "이 팀원은 항상 이런다", "MZ 세대는 다 그래" → '성급한 일반화'
+    · "리더라면 ~해야 한다/절대 ~면 안 된다" → '당위 진술'
+    · "이번 분기도 KPI를 못 맞출 것이다" → '예언자적 오류'
+    근거가 약하면 1~2개만. 없으면 빈 배열 `[]`. **억지로 채우지 마세요.**
+- **reframe**: [그때 떠오른 생각]의 핵심 주장을 직접 인용·패러프레이즈하여, 그 주장을 뒤집어볼 구체 질문으로 바꿉니다. [직급] · [팀 규모] · [업종] 맥락을 반영하세요.
+- **question**: 이번 주 실제 팀 현장에서 수행 가능한 관찰·실험 과제 하나. 구체적 시점·대화 주제·위임 업무를 포함하고, "자신을 돌보세요" 같은 추상적 자기성찰은 금지.
+
+[출력 형식]
+반드시 아래 JSON 하나만 출력. 앞뒤 설명·코드펜스·주석 금지.
+{
+  "empathy": "...",
+  "distortions": ["...", "..."],
+  "reframe": "...",
+  "question": "..."
+}
+
+[언어 — 반드시 준수]
+- 출력 문자는 **한글, 숫자, 공백, 일반 한국어 구두점(. , ! ? : ' " ( ) -)** 만 허용.
+- 한자·일본어·영어 단어 혼입 절대 금지.
+- JSON 생성 후 출력 직전, 비한글 문자가 있는지 스스로 1회 검토하고 있으면 모두 한글로 치환하세요.
+
+[예시]
+입력:
+  [오늘의 상황] 팀원이 1on1에서 업무량이 너무 많다고 했는데 내가 줄여줄 여력이 없다고 느꼈다
+  [그때 떠오른 생각] 내가 팀원을 지키지 못하고 있다. 이 팀원이 퇴사하면 내 리더십 실패다
+  [직급] 신임 팀장 1년차
+출력:
+{"empathy":"1on1에서 팀원이 업무량 고충을 털어놨을 때, 도와주고 싶은데 여력이 없다는 그 난처함이 느껴졌을 것 같아요.","distortions":["개인화","파국화"],"reframe":"팀원이 퇴사하면 '내 리더십 실패'라고 단정하고 계신데, 퇴사 여부가 오직 팀장의 여력만으로 결정된다고 볼 수 있을까요?","question":"이번 주 그 팀원과 5분 짜리 짧은 체크인을 잡고, '지금 가장 줄이고 싶은 업무 하나'를 직접 물어보시겠어요?"}
+"""
+
+
+def _build_leader_user_block(entry: LeaderEntry) -> str:
+    return (
+        f"[오늘의 상황]\n{entry.situation}\n\n"
+        f"[그때 떠오른 생각]\n{entry.thought}\n\n"
+        f"[스스로 시도한 재구성]\n{entry.reframe or '(작성하지 않음)'}\n\n"
+        f"[직급]\n{entry.role_level or '(미입력)'}\n\n"
+        f"[팀 규모]\n{entry.team_size or '(미입력)'}\n\n"
+        f"[업종]\n{entry.industry or '(미입력)'}"
+    )
+
+
+@app.get("/leaders", response_class=HTMLResponse)
+async def leaders_page(request: Request) -> HTMLResponse:
+    return TEMPLATES.TemplateResponse("leaders.html", {"request": request})
+
+
+@app.post("/api/leader")
+async def leader_analyze(entry: LeaderEntry) -> JSONResponse:
+    text = f"{entry.situation}\n{entry.thought}\n{entry.reframe}"
+    if _contains_crisis(text):
+        return JSONResponse(CRISIS_RESPONSE)
+
+    user_block = _build_leader_user_block(entry)
+    result = await _call_minimax(LEADER_SYSTEM_PROMPT, user_block)
+    if result is None:
+        logger.info("Leader: primary provider failed; trying NVIDIA fallback")
+        result = await _call_nvidia(LEADER_SYSTEM_PROMPT, user_block)
+    if result is None:
+        logger.info("Leader: all providers failed; returning template fallback")
+        result = _fallback_feedback()
     return JSONResponse(result.model_dump())

@@ -1,0 +1,44 @@
+/* 걱정인형: 리더스 — color token overrides */
+:root {
+  --bg: #f2f5fa;
+  --surface: #ffffff;
+  --surface-soft: #eaeff7;
+  --ink: #1a2235;
+  --ink-soft: #4a5568;
+  --muted: #8896ab;
+  --accent: #3b76c4;
+  --accent-strong: #2c5f9e;
+  --accent-soft: #d6e4f6;
+  --lavender: #c9973a;
+  --success: #5a9a6a;
+  --danger: #c25555;
+  --shadow: 0 10px 30px rgba(59, 118, 196, 0.08);
+  --shadow-lift: 0 14px 40px rgba(59, 118, 196, 0.16);
+}
+
+.brand-dot {
+  background: radial-gradient(circle at 30% 30%, #a8c8f0, var(--accent));
+  box-shadow: 0 4px 10px rgba(59, 118, 196, 0.4);
+}
+
+/* Back link to main app */
+.back-link {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.back-link:hover { color: var(--accent); }
+
+/* Badge next to brand name */
+.brand-badge {
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  align-self: center;
+}
