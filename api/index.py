@@ -156,11 +156,10 @@ MINIMAX_DEFAULT_MODEL = "MiniMax-M2.7"
 
 NVIDIA_DEFAULT_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NVIDIA_DEFAULT_MODEL = "moonshotai/kimi-k2.5"
-MINIMAX_SECONDARY_MODEL = "MiniMax-M2"
 LLM_MAX_TOKENS = 2048
-PRIMARY_TIMEOUT_SECONDS = 30
-SECONDARY_TIMEOUT_SECONDS = 18
-FALLBACK_TIMEOUT_SECONDS = 20
+# 1차/2차 모두 180초씩. Vercel maxDuration보다 작아야 504 방지.
+PRIMARY_TIMEOUT_SECONDS = 180
+FALLBACK_TIMEOUT_SECONDS = 180
 
 # 금지 문자: CJK 한자(확장A 포함), 히라가나, 가타카나, 반각 가타카나.
 # KPI/OKR/1on1 같은 비즈니스 약어는 한국 직장인 컨텍스트에서 자연스러우므로 영문은 허용.
@@ -299,20 +298,11 @@ async def _call_minimax_model(
 
 
 async def _call_minimax(system_prompt: str, user_block: str) -> Optional[FeedbackPayload]:
-    """MiniMax 1차 시도. 기본 M2.7 실패 시 M2로 한 번 더 시도."""
-    primary_model = os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL)
-    result = await _call_minimax_model(
-        system_prompt, user_block, primary_model, PRIMARY_TIMEOUT_SECONDS
+    """MiniMax 1차 시도. 실패 시 None 반환 → 상위에서 NVIDIA 폴백."""
+    model = os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL)
+    return await _call_minimax_model(
+        system_prompt, user_block, model, PRIMARY_TIMEOUT_SECONDS
     )
-    if result is not None:
-        return result
-
-    if primary_model != MINIMAX_SECONDARY_MODEL:
-        logger.info("Primary MiniMax failed; trying secondary model=%s", MINIMAX_SECONDARY_MODEL)
-        return await _call_minimax_model(
-            system_prompt, user_block, MINIMAX_SECONDARY_MODEL, SECONDARY_TIMEOUT_SECONDS
-        )
-    return None
 
 
 async def _call_nvidia(system_prompt: str, user_block: str) -> Optional[FeedbackPayload]:

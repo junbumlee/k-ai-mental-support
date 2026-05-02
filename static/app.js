@@ -186,7 +186,7 @@ form.addEventListener("submit", async (e) => {
   const label = submitBtn.querySelector(".btn-label");
   const original = label.textContent;
   submitBtn.disabled = true;
-  label.innerHTML = 'K리더용 걱정인형이 생각 중이에요<span class="loading-dots"></span>';
+  const stopProgress = startProgressLabel(label, "K리더용 걱정인형이 생각 중이에요");
 
   try {
     const res = await fetch("/api/analyze", {
@@ -201,10 +201,34 @@ form.addEventListener("submit", async (e) => {
   } catch (err) {
     toast("연결이 불안정해요. 다시 시도해주세요");
   } finally {
+    stopProgress();
     submitBtn.disabled = false;
     label.textContent = original;
   }
 });
+
+/* 경과 시간에 따라 라벨을 단계적으로 바꿔, 사용자가 응답 지연을 인지하고
+   창을 닫지 않도록 안내. AbortController는 사용하지 않으므로
+   백엔드(Vercel maxDuration 내)에서 응답이 오면 늦게라도 처리된다. */
+function startProgressLabel(labelEl, baseText) {
+  const dots = '<span class="loading-dots"></span>';
+  const stages = [
+    { at: 0,   text: baseText },
+    { at: 20,  text: "조금만 더 깊이 보고 있어요" },
+    { at: 60,  text: "AI 응답이 평소보다 느려요. 1~2분 더 걸릴 수 있어요" },
+    { at: 150, text: "거의 다 됐어요. 창을 닫지 말고 잠시만요" },
+  ];
+  const start = Date.now();
+  const apply = () => {
+    const elapsed = (Date.now() - start) / 1000;
+    let stage = stages[0];
+    for (const s of stages) if (elapsed >= s.at) stage = s;
+    labelEl.innerHTML = `${stage.text}${dots}`;
+  };
+  apply();
+  const timer = setInterval(apply, 5000);
+  return () => clearInterval(timer);
+}
 
 /* ───── 피드백 렌더링 ───── */
 function renderFeedback(data) {
