@@ -157,9 +157,10 @@ MINIMAX_DEFAULT_MODEL = "MiniMax-M2.7"
 NVIDIA_DEFAULT_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NVIDIA_DEFAULT_MODEL = "moonshotai/kimi-k2.5"
 LLM_MAX_TOKENS = 2048
-# 1차/2차 모두 180초씩. Vercel maxDuration보다 작아야 504 방지.
+# Vercel Hobby 플랜 maxDuration 300s 한도 내에서: MiniMax 180 + NVIDIA 100 = 280s.
+# NVIDIA는 평소 10~30s에 응답하므로 100s면 충분한 안전 마진.
 PRIMARY_TIMEOUT_SECONDS = 180
-FALLBACK_TIMEOUT_SECONDS = 180
+FALLBACK_TIMEOUT_SECONDS = 100
 
 # 금지 문자: CJK 한자(확장A 포함), 히라가나, 가타카나, 반각 가타카나.
 # KPI/OKR/1on1 같은 비즈니스 약어는 한국 직장인 컨텍스트에서 자연스러우므로 영문은 허용.
