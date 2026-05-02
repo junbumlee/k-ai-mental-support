@@ -90,3 +90,21 @@ LLM 피드백 활성화에는 `MINIMAX_API_KEY` 환경변수 필요 (옵션: `MI
 ## Python 버전 주의
 
 Pydantic v2가 런타임에 타입 어노테이션을 eval함. Python 3.9 로컬 환경 호환을 위해 `str | None` 대신 `Optional[str]`, `list[str]` 대신 `List[str]` 사용 (`from __future__ import annotations`만으로는 불충분).
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
