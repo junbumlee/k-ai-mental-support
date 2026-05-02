@@ -1,0 +1,10 @@
+{
+  "name": "k-ai-mental-support",
+  "private": true,
+  "scripts": {
+    "build:analytics": "node scripts/build-analytics.mjs"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^1.6.1"
+  }
+}

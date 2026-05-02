@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **LLM**: MiniMax Token Plan API (기본 `MiniMax-M2.7` — Token Plan이 `MiniMax-Text-01`/`M1`은 권한 없음으로 2061 반환함. `chatcompletion_v2` OpenAI 호환)
 - **저장소**: 브라우저 `localStorage` (MVP) — 서버는 stateless
 - **STT**: Web Speech API (브라우저 네이티브)
+- **Analytics**: `@vercel/analytics` (브라우저 직접 import가 어려운 구조라 `static/vendor/vercel-analytics.mjs`로 복사해 사용)
 - **배포**: Vercel
 
 ## 자주 쓰는 커맨드
@@ -24,6 +25,8 @@ uvicorn api.index:app --reload --port 3000
 
 # 의존성
 pip install -r requirements.txt
+npm install
+npm run build:analytics
 
 # 배포
 vercel              # 프리뷰
