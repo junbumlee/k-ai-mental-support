@@ -162,7 +162,7 @@ LLM_MAX_TOKENS = 2048
 PRIMARY_TIMEOUT_SECONDS = 180
 FALLBACK_TIMEOUT_SECONDS = 100
 
-# 금지 문자: CJK 한자(확장A 포함), 히라가나, 가타카나, 반각 가타카나.
+# 금지 문자: CJK 한자(확장A 포함), 히라가나, 가타카나, 반각 가타카나, 아랍어.
 # KPI/OKR/1on1 같은 비즈니스 약어는 한국 직장인 컨텍스트에서 자연스러우므로 영문은 허용.
 _FORBIDDEN_RE = re.compile(
     r"["
@@ -171,6 +171,11 @@ _FORBIDDEN_RE = re.compile(
     r"\u3040-\u309F"   # 히라가나
     r"\u30A0-\u30FF"   # 가타카나
     r"\uFF66-\uFF9F"   # 반각 가타카나
+    r"\u0600-\u06FF"   # 아랍어 기본
+    r"\u0750-\u077F"   # 아랍어 보충
+    r"\u08A0-\u08FF"   # 아랍어 확장 A
+    r"\uFB50-\uFDFF"   # 아랍어 표현형 A
+    r"\uFE70-\uFEFF"   # 아랍어 표현형 B
     r"]"
 )
 

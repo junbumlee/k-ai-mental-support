@@ -168,26 +168,44 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
-/* 경과 시간에 따라 라벨을 단계적으로 바꿔, 사용자가 응답 지연을 인지하고
-   창을 닫지 않도록 안내. AbortController는 사용하지 않으므로
-   백엔드(Vercel maxDuration 내)에서 응답이 오면 늦게라도 처리된다. */
+/* 5초마다 심리상담가 톤의 대기 메시지를 무작위로 회전. 60s/150s 시점에는
+   응답 지연 안내를 덧붙여 사용자가 창을 닫지 않도록 한다. AbortController는
+   쓰지 않아 백엔드(Vercel maxDuration 내) 응답이면 늦게라도 처리된다. */
+const COUNSELOR_MESSAGES = [
+  "오늘 적어주신 마음을 천천히 읽고 있어요",
+  "그 장면을 함께 떠올려보고 있어요",
+  "리더의 자리에서 느꼈을 무게를 살피고 있어요",
+  "한 번 더 깊이 들여다보고 있어요",
+  "조금 더 다정한 표현을 고르고 있어요",
+  "당신의 맥락을 놓치지 않으려 천천히 보고 있어요",
+  "어떻게 되돌려 물어볼지 신중히 고르고 있어요",
+  "이번 주에 시도해볼 한 걸음을 그려보고 있어요",
+  "성급하게 결론짓지 않으려 다시 살피고 있어요",
+  "당신이 적어준 단어를 그대로 받아 안고 있어요",
+  "팀과 본인 사이의 균형을 함께 짚어보고 있어요",
+  "지금 이 순간에 필요한 질문 하나를 다듬고 있어요",
+];
 function startProgressLabel(labelEl, baseText) {
   const dots = '<span class="loading-dots"></span>';
-  const stages = [
-    { at: 0,   text: baseText },
-    { at: 20,  text: "조금만 더 깊이 보고 있어요" },
-    { at: 60,  text: "AI 응답이 평소보다 느려요. 1~2분 더 걸릴 수 있어요" },
-    { at: 150, text: "거의 다 됐어요. 창을 닫지 말고 잠시만요" },
-  ];
   const start = Date.now();
-  const apply = () => {
-    const elapsed = (Date.now() - start) / 1000;
-    let stage = stages[0];
-    for (const s of stages) if (elapsed >= s.at) stage = s;
-    labelEl.innerHTML = `${stage.text}${dots}`;
+  let lastIdx = -1;
+  const pickMessage = () => {
+    let idx;
+    do { idx = Math.floor(Math.random() * COUNSELOR_MESSAGES.length); }
+    while (idx === lastIdx && COUNSELOR_MESSAGES.length > 1);
+    lastIdx = idx;
+    return COUNSELOR_MESSAGES[idx];
   };
-  apply();
-  const timer = setInterval(apply, 5000);
+  const apply = (firstTick) => {
+    const elapsed = (Date.now() - start) / 1000;
+    const main = firstTick ? baseText : pickMessage();
+    let suffix = "";
+    if (elapsed >= 150) suffix = " · 거의 다 됐어요, 창을 닫지 말고 잠시만요";
+    else if (elapsed >= 60) suffix = " · 평소보다 조금 더 걸리고 있어요";
+    labelEl.innerHTML = `${main}${dots}${suffix ? `<span class="progress-suffix">${suffix}</span>` : ""}`;
+  };
+  apply(true);
+  const timer = setInterval(() => apply(false), 5000);
   return () => clearInterval(timer);
 }
 
