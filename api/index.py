@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from typing import List, Literal, Optional
 
@@ -85,64 +86,55 @@ class FeedbackPayload(BaseModel):
 
 # ---------- LLM 시스템 프롬프트 ----------
 
-SYSTEM_PROMPT = """당신은 'K리더용 걱정인형'이라는 이름의 CBT(인지행동치료) 기반 심리 서포터입니다.
-한국 직장인이 오늘 겪은 구체적 상황과 자동화된 사고를 읽고, **그 사용자의 상황에만 해당하는 개인화된** 피드백을 제공합니다.
-일반 템플릿 응답이 아니라, 입력 문장에서 단서를 뽑아 전문가가 짚어주듯 답하세요.
+SYSTEM_PROMPT = """당신은 'K리더용 걱정인형'입니다. 한국의 리더와 신임 팀장을 돕는 CBT 기반 심리 코치처럼 응답하세요.
+말투는 차분하고 따뜻해야 하지만 가볍거나 뻔하면 안 됩니다. 사용자가 이미 힘든 상황이라는 전제를 두고, 심리전문가가 사례를 읽고 짚어주듯 구체적으로 말하세요.
 
-[절대 원칙]
-1. 진단하지 않습니다 ("우울증", "불안장애" 등 병명 금지).
-2. 사용자의 사고를 대신 재구성하지 않습니다. 반드시 '질문'으로 돌려주세요.
-3. 판단·훈계·충고 금지. 공감과 선택지 제시.
-4. 자해·자살 신호가 있으면 전문 상담 연결만 권하고 분석은 중단.
+핵심 원칙:
+1. 진단명은 쓰지 않습니다.
+2. 사용자의 생각을 대신 고치지 말고, 스스로 다시 보게 만드는 질문으로 돕습니다.
+3. 판단, 훈계, 도덕적 충고는 금지합니다.
+4. 자해나 자살 신호가 보이면 분석하지 말고 도움 연결만 권합니다.
 
-[개인화 강제 규칙 — 반드시 준수]
-- **empathy**: [상황] 문장에서 구체 명사(예: "회의", "KPI", "팀장", "데드라인", "평가")를 1개 이상 **그대로 인용**해 공감을 표현합니다. "그런 일이 있으셨군요" 같은 추상적 위로는 금지.
-- **distortions**: [그때 떠오른 생각] 문장을 실제 단서로 분석합니다.
-    · "나는 늘/항상/매번", "아무도" 같은 전칭 표현 → '성급한 일반화'
-    · "~할 것이다/~당할 것이다" 예측 → '예언자적 오류'
-    · "~해야 한다/절대 ~면 안 된다" → '당위 진술'
-    · "저 사람은 분명 나를 ~게 생각한다" → '독심술'
-    · "나는 무능한/한심한 사람이다" 자기규정 → '낙인찍기'
-    · "하나가 잘못되면 다 끝난다" → '파국화'
-    · "좋은 건 별거 아니고 나쁜 것만 의미있다" → '정신적 여과'/'긍정 격하'
-    근거가 약하면 1~2개만. 없으면 빈 배열 `[]`. **억지로 3개 채우지 마세요.**
-- **reframe**: [자동화 사고]의 핵심 주장을 **직접 인용하거나 패러프레이즈**하여, 그 주장을 뒤집어볼 구체 질문으로 바꿉니다. "근거가 있을까요?" 같은 교과서적 일반 질문 금지. [직무/연차] 맥락을 반영해 해당 역할이 평소 접하는 반례를 떠올리게 유도.
-- **question**: 내일(또는 가까운 시점) 실제 업무 현장에서 수행 가능한 **관찰 과제 하나**. 수치·시점·대상·행동이 구체적이어야 합니다. "자신을 더 돌보세요" 같은 추상적 자기성찰 금지.
+필드별 기준:
+1. empathy
+- 2문장에서 3문장으로 씁니다.
+- 상황 문장에서 나온 구체 명사 1개 이상을 그대로 인용합니다.
+- 단순 위로가 아니라 왜 그 장면이 리더에게 유독 크게 느껴질 수 있는지까지 짚습니다.
+- 감정 이름을 억지로 붙이기보다, 몸이 굳거나 공기가 무거워지는 느낌 같은 실제 체감에 가깝게 씁니다.
 
-[CBT 왜곡 유형 — 근거가 확인될 때만 선택]
-흑백논리, 성급한 일반화, 정신적 여과, 긍정 격하, 독심술, 예언자적 오류,
-확대/축소, 감정적 추론, 당위 진술, 낙인찍기, 개인화, 비난, 파국화
+2. distortions
+- 근거가 뚜렷할 때만 0개에서 2개 고릅니다.
+- 왜곡 이름은 흑백논리, 성급한 일반화, 정신적 여과, 긍정 격하, 독심술, 예언자적 오류, 확대 축소, 감정적 추론, 당위 진술, 낙인찍기, 개인화, 비난, 파국화 중에서만 고릅니다.
 
-[출력 형식]
-반드시 아래 JSON 하나만 출력. 앞뒤 설명·코드펜스·주석 금지.
-{
-  "empathy": "...",
-  "distortions": ["...", "..."],
-  "reframe": "...",
-  "question": "..."
-}
+3. reframe
+- 2문장에서 4문장으로 씁니다.
+- 자동화 사고의 핵심 주장에 바로 연결되어야 합니다.
+- 교과서처럼 딱딱한 질문보다, 사용자가 자기 해석과 사실을 조금 분리해서 보게 만드는 질문이어야 합니다.
+- 직무 연차나 리더 맥락이 있으면 자연스럽게 반영합니다.
+- 번역투 표현, 지나치게 시적인 비유, 조사 빠진 문장은 피하고 자연스러운 한국어로 씁니다.
 
-[언어 — 반드시 준수, 출력 전 자체 검토]
-- 출력 문자는 **한글, 숫자, 공백, 일반 한국어 구두점(. , ! ? : ' " ( ) -)** 만 허용.
-- 한자(例/分/明/确/退/囊 등), 일본어(カタカナ/ひらがな/メモ), 영어 단어(plication/etc/atau 등), 아라비아·전각 구두점(،，。！？) 혼입 절대 금지.
-- 한자어는 항상 한국어 한글 표기로 바꿉니다: "分明" → "분명", "确实" → "확실히", "退回" → "반려", "囊括" → "포함". 일본어·영어도 한국어로 번역 또는 의역.
-- JSON 생성 후 출력 직전, 비한글 문자가 있는지 스스로 1회 검토하고 있으면 모두 한글로 치환한 뒤 최종 출력하세요.
+4. question
+- 1개 관찰 과제만 제시합니다.
+- 2문장 안에서 끝냅니다.
+- 내일 또는 가까운 업무 현장에서 실제로 할 수 있어야 합니다.
+- 시점, 대상, 행동이 구체적이어야 하며, 자기비난 과제가 아니라 관찰 과제여야 합니다.
+- 이미 지나간 장면을 다시 떠올리는 회고 과제가 아니라, 다음 회의나 다음 대화에서 실제로 해볼 행동이어야 합니다.
+- 마음속 이유를 추측하게 하지 말고, 표정, 침묵 길이, 후속 발언, 질문 여부처럼 눈으로 볼 수 있는 사실을 관찰하게 하세요.
+- "가능성을 떠올려보세요", "생각해보세요", "이유를 상상해보세요" 같은 과제는 금지합니다.
 
-[예시 — 개인화 수준 참고]
-입력:
-  [상황] 금요일 팀 회의에서 분기 KPI를 발표하다 숫자를 하나 잘못 읽었다
-  [그때 떠오른 생각] 팀장이 속으로 나를 무능하다고 낙인찍었을 거다
-  [직무/연차] 마케팅 4년차
-출력:
-{"empathy":"분기 KPI 발표라는 중요한 자리에서 숫자를 잘못 읽으셨으니 속이 내려앉는 기분이셨겠어요.","distortions":["독심술","낙인찍기"],"reframe":"팀장님이 '속으로 무능하다고 낙인찍었다'는 건 확인된 사실일까요, 아니면 발표 직후 떠오른 짐작에 가까울까요?","question":"다음 1on1 때 발표 피드백을 직접 여쭤보고, 팀장님 반응을 한 가지만 기록해보시겠어요?"}
+개인화 규칙:
+- 입력에 나온 단어를 재사용하세요. 회의, 팀원, 평가, 보고, KPI 같은 표현을 그대로 살리세요.
+- 일반적인 위로 문구로 뭉개지 말고, 이 사용자 상황에만 맞는 말처럼 들리게 쓰세요.
+- 답변은 짧더라도 얇지 않아야 합니다. 각 문장은 정보량이 있어야 합니다.
+- 어색한 번역투보다 자연스러운 상담 언어를 우선하세요.
 
-입력:
-  [상황] 퇴근 후 집에서 내일 있을 프로젝트 중간보고가 계속 떠올라 잠이 안 온다
-  [그때 떠오른 생각] 분명 질문이 쏟아질 거고 하나라도 막히면 프로젝트가 엎어질 것이다
-  [직무/연차] 기획 2년차
-출력:
-{"empathy":"내일 중간보고가 머릿속에서 돌아가니 잠자리에 누워도 계속 그 장면이 재생되시겠어요.","distortions":["예언자적 오류","파국화"],"reframe":"질문 하나가 막히면 '프로젝트가 엎어진다'고 예단하고 계신데, 지난 보고들 중 질문에 즉답 못했던 순간이 실제로 프로젝트 전체를 무너뜨렸던 적이 있으셨나요?","question":"내일 예상 질문 3개를 메모장에 적고, 그중 답하기 가장 자신 없는 1개에 대해 '모른다면 어떻게 답할지' 한 줄만 준비해두시겠어요?"}
-"""
+출력 규칙:
+- JSON 하나만 출력합니다.
+- 코드펜스, 설명, 주석은 금지합니다.
+- 출력 문자는 한글, 숫자, 공백, 마침표, 쉼표, 느낌표, 물음표, 콜론, 작은따옴표, 큰따옴표, 괄호, 하이픈만 사용합니다.
+
+형식:
+{"empathy":"...","distortions":["..."],"reframe":"...","question":"..."}"""
 
 
 # ---------- 유틸 ----------
@@ -164,9 +156,14 @@ MINIMAX_DEFAULT_MODEL = "MiniMax-M2.7"
 
 NVIDIA_DEFAULT_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NVIDIA_DEFAULT_MODEL = "moonshotai/kimi-k2.5"
+MINIMAX_SECONDARY_MODEL = "MiniMax-M2"
+LLM_MAX_TOKENS = 2048
+PRIMARY_TIMEOUT_SECONDS = 30
+SECONDARY_TIMEOUT_SECONDS = 18
+FALLBACK_TIMEOUT_SECONDS = 20
 
-# 금지 문자: CJK 한자(확장A 포함), 히라가나, 가타카나, 반각 가타카나.
-# 한 글자라도 있으면 재시도/스크러빙 트리거.
+# 금지 문자: CJK 한자(확장A 포함), 히라가나, 가타카나, 반각 가타카나, 영문.
+# 한 글자라도 있으면 스크러빙 트리거.
 _FORBIDDEN_RE = re.compile(
     r"["
     r"\u3400-\u4DBF"   # CJK 확장 A
@@ -174,6 +171,7 @@ _FORBIDDEN_RE = re.compile(
     r"\u3040-\u309F"   # 히라가나
     r"\u30A0-\u30FF"   # 가타카나
     r"\uFF66-\uFF9F"   # 반각 가타카나
+    r"A-Za-z"         # 영문
     r"]"
 )
 
@@ -233,16 +231,13 @@ def _parse_feedback_json(content: str) -> FeedbackPayload:
     )
 
 
-async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
-    """MiniMax 1차 시도. 성공 시 FeedbackPayload, 실패 시 None(→ NVIDIA로 폴백)."""
+async def _call_minimax_model(entry: DiaryEntry, model: str, timeout_seconds: int) -> Optional[FeedbackPayload]:
     api_key = os.environ.get("MINIMAX_API_KEY")
     if not api_key:
         logger.warning("MiniMax skip: MINIMAX_API_KEY is not configured")
         return None
 
     base_url = os.environ.get("MINIMAX_BASE_URL", MINIMAX_DEFAULT_BASE_URL).rstrip("/")
-    model = os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL)
-
     user_block = _build_user_block(entry)
     payload = {
         "model": model,
@@ -250,8 +245,8 @@ async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_block},
         ],
-        "max_tokens": 4096,
-        "temperature": 0.3,
+        "max_tokens": LLM_MAX_TOKENS,
+        "temperature": 0.2,
         "top_p": 0.9,
     }
     headers = {
@@ -260,12 +255,15 @@ async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
     }
 
     async def _one_shot(body_payload: dict) -> Optional[FeedbackPayload]:
-        async with httpx.AsyncClient(timeout=60) as client:
+        started_at = time.perf_counter()
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.post(
                 f"{base_url}/text/chatcompletion_v2",
                 headers=headers,
                 json=body_payload,
             )
+        elapsed = time.perf_counter() - started_at
+        logger.info("MiniMax model=%s responded in %.2fs", model, elapsed)
         response.raise_for_status()
         body = response.json()
         base_resp = body.get("base_resp") or {}
@@ -290,53 +288,32 @@ async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
         result = await _one_shot(payload)
         if result is None:
             return None
-
-        # 가드레일: 금지 문자가 있으면 이전 응답을 assistant 메시지로 인용하고
-        # 온도를 낮추며 1회 재시도. 그래도 남으면 NVIDIA 폴백으로 위임 (지연 보호).
-        for attempt in range(1, 2):
-            if not _has_forbidden(result):
-                break
-            prev_bad = json.dumps(
-                {
-                    "empathy": result.empathy,
-                    "distortions": result.distortions,
-                    "reframe": result.reframe,
-                    "question": result.question,
-                },
-                ensure_ascii=False,
-            )
-            retry_payload = dict(payload)
-            retry_payload["temperature"] = max(0.05, 0.25 - 0.1 * attempt)
-            retry_payload["messages"] = list(payload["messages"]) + [
-                {"role": "assistant", "content": prev_bad},
-                {
-                    "role": "user",
-                    "content": (
-                        f"[재시도 {attempt}] 직전 JSON 응답에 한자·일본어 문자가 섞여 있습니다. "
-                        "같은 조언을 **순수 한글만** 사용하여 동일 JSON 스키마로 다시 출력하세요. "
-                        "금지: 한자·히라가나·가타카나·전각 구두점. "
-                        "반드시 한국어 한글로 치환 예) 不行→안 된다, 过程→과정, "
-                        "开始→시작, 职场→직장, 踏入→들어서다, 这个人→이 사람."
-                    ),
-                },
-            ]
-            retried = await _one_shot(retry_payload)
-            if retried is not None:
-                result = retried
-
-        # 재시도 후에도 금지 문자가 남으면 MiniMax 결과 버리고 NVIDIA로 폴백.
         if _has_forbidden(result):
-            logger.warning("MiniMax response still had forbidden characters after retries; falling back to NVIDIA")
-            return None
+            logger.info("MiniMax model=%s response contained forbidden characters; scrubbing", model)
+            result = _scrub_payload(result)
         return result
     except Exception:
         logger.exception(
-            "MiniMax call failed for situation=%r thought=%r job_role=%r",
+            "MiniMax model=%s call failed for situation=%r thought=%r job_role=%r",
+            model,
             entry.situation[:120],
             entry.thought[:120],
             (entry.job_role or "")[:60],
         )
         return None
+
+
+async def _call_minimax(entry: DiaryEntry) -> Optional[FeedbackPayload]:
+    """MiniMax 1차 시도. 기본 M2.7 실패 시 M2로 한 번 더 시도."""
+    primary_model = os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL)
+    result = await _call_minimax_model(entry, primary_model, PRIMARY_TIMEOUT_SECONDS)
+    if result is not None:
+        return result
+
+    if primary_model != MINIMAX_SECONDARY_MODEL:
+        logger.info("Primary MiniMax failed; trying secondary model=%s", MINIMAX_SECONDARY_MODEL)
+        return await _call_minimax_model(entry, MINIMAX_SECONDARY_MODEL, SECONDARY_TIMEOUT_SECONDS)
+    return None
 
 
 async def _call_nvidia(entry: DiaryEntry) -> Optional[FeedbackPayload]:
@@ -354,8 +331,8 @@ async def _call_nvidia(entry: DiaryEntry) -> Optional[FeedbackPayload]:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": _build_user_block(entry)},
         ],
-        "max_tokens": 4096,
-        "temperature": 0.3,
+        "max_tokens": LLM_MAX_TOKENS,
+        "temperature": 0.2,
         "top_p": 0.9,
     }
     headers = {
@@ -364,8 +341,11 @@ async def _call_nvidia(entry: DiaryEntry) -> Optional[FeedbackPayload]:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        started_at = time.perf_counter()
+        async with httpx.AsyncClient(timeout=FALLBACK_TIMEOUT_SECONDS) as client:
             response = await client.post(url, headers=headers, json=payload)
+        elapsed = time.perf_counter() - started_at
+        logger.info("NVIDIA responded in %.2fs", elapsed)
         response.raise_for_status()
         body = response.json()
         choices = body.get("choices") or []

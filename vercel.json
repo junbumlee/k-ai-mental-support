@@ -7,7 +7,7 @@
     }
   },
   "routes": [
-    { "src": "/static/(.*)", "dest": "/api/index.py" },
+    { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/api/index.py" }
   ]
 }
