@@ -1,13 +1,25 @@
-/* K직장인용 걱정인형 — 세 줄 기록 + LLM 피드백 클라이언트 로직 */
+/* K리더용 걱정인형 — 세 줄 기록 + LLM 피드백 클라이언트 로직 */
 
 const STORAGE_KEYS = {
   entries: "worrydoll.entries.v1",
   profile: "worrydoll.profile.v1",
 };
 
+// 리더 상황 카테고리 — id는 영문, label·placeholder는 사용자/LLM에 노출되는 한국어
+const CATEGORIES = [
+  { id: "performance", label: "성과 압박",  placeholder: "오늘 어떤 숫자나 평가가 가장 무겁게 느껴졌나요?" },
+  { id: "team",        label: "팀원 관리",  placeholder: "오늘 팀원 누구의 어떤 행동이 신경 쓰였나요?" },
+  { id: "evaluation",  label: "평가·고과",  placeholder: "구체적으로 어떤 평가 상황이 떠오르나요?" },
+  { id: "report",      label: "상사·보고",  placeholder: "보고에서 가장 떨렸던 한 순간을 적어보세요" },
+  { id: "conflict",    label: "팀 내 갈등", placeholder: "누구와의 어떤 장면이 머리에서 안 떠나나요?" },
+  { id: "other",       label: "기타",      placeholder: "지금 머릿속에 가장 먼저 떠오르는 한 줄을 적어보세요" },
+];
+const DEFAULT_SITUATION_PLACEHOLDER = "예: 회의에서 내 의견을 말하려다 멈췄다";
+
 const state = {
   entries: loadEntries(),
   profile: loadProfile(),
+  selectedCategory: null,  // { id, label, placeholder } | null
   pendingFeedback: null,
   pendingEntry: null,
 };
@@ -23,6 +35,38 @@ document.querySelectorAll(".tab").forEach((btn) => {
     if (target === "list") renderEntries();
   });
 });
+
+/* ───── 카테고리 칩 ───── */
+const categoryRow = document.getElementById("category-row");
+const situationEl = document.getElementById("situation");
+
+CATEGORIES.forEach((cat) => {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "category-chip";
+  btn.dataset.id = cat.id;
+  btn.setAttribute("role", "radio");
+  btn.setAttribute("aria-checked", "false");
+  btn.textContent = cat.label;
+  btn.addEventListener("click", () => selectCategory(cat));
+  categoryRow.appendChild(btn);
+});
+
+function selectCategory(cat) {
+  // 같은 칩 재클릭 → 해제
+  const isUnselect = state.selectedCategory && state.selectedCategory.id === cat.id;
+  state.selectedCategory = isUnselect ? null : cat;
+
+  document.querySelectorAll(".category-chip").forEach((chip) => {
+    const active = !isUnselect && chip.dataset.id === cat.id;
+    chip.classList.toggle("active", active);
+    chip.setAttribute("aria-checked", active ? "true" : "false");
+  });
+
+  situationEl.placeholder = state.selectedCategory
+    ? state.selectedCategory.placeholder
+    : DEFAULT_SITUATION_PLACEHOLDER;
+}
 
 /* ───── 프로필 ───── */
 const jobInput = document.getElementById("job-role");
@@ -134,6 +178,7 @@ form.addEventListener("submit", async (e) => {
     thought: document.getElementById("thought").value.trim(),
     reframe: document.getElementById("reframe").value.trim(),
     job_role: state.profile.jobRole || null,
+    category: state.selectedCategory ? state.selectedCategory.label : null,
   };
   if (!entry.situation || !entry.thought) return;
 
@@ -141,7 +186,7 @@ form.addEventListener("submit", async (e) => {
   const label = submitBtn.querySelector(".btn-label");
   const original = label.textContent;
   submitBtn.disabled = true;
-  label.innerHTML = 'K직장인용 걱정인형이 생각 중이에요<span class="loading-dots"></span>';
+  label.innerHTML = 'K리더용 걱정인형이 생각 중이에요<span class="loading-dots"></span>';
 
   try {
     const res = await fetch("/api/analyze", {
@@ -227,6 +272,12 @@ function saveEntry() {
   localStorage.setItem(STORAGE_KEYS.entries, JSON.stringify(state.entries));
 
   form.reset();
+  state.selectedCategory = null;
+  document.querySelectorAll(".category-chip").forEach((chip) => {
+    chip.classList.remove("active");
+    chip.setAttribute("aria-checked", "false");
+  });
+  situationEl.placeholder = DEFAULT_SITUATION_PLACEHOLDER;
   document.getElementById("feedback").classList.add("hidden");
   state.pendingEntry = null;
   state.pendingFeedback = null;
@@ -258,6 +309,11 @@ function renderEntries() {
     article.dataset.id = record.id;
 
     tpl.querySelector("time").textContent = formatDate(record.createdAt);
+    const categoryEl = tpl.querySelector(".entry-category");
+    if (record.entry.category) {
+      categoryEl.textContent = record.entry.category;
+      categoryEl.classList.remove("hidden");
+    }
     tpl.querySelector(".entry-situation").textContent = record.entry.situation;
     tpl.querySelector(".entry-thought").textContent = record.entry.thought;
     const reframe = tpl.querySelector(".entry-reframe");

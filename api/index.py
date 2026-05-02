@@ -1,4 +1,4 @@
-"""K직장인용 걱정인형 FastAPI 엔트리 포인트 (Vercel 서버리스 함수)."""
+"""K리더용 걱정인형 FastAPI 엔트리 포인트 (Vercel 서버리스 함수)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 logger = logging.getLogger("worrydoll.api")
 
-app = FastAPI(title="K직장인용 걱정인형", docs_url=None, redoc_url=None)
+app = FastAPI(title="K리더용 걱정인형", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
@@ -59,6 +59,18 @@ class DiaryEntry(BaseModel):
     thought: str = Field(..., min_length=1, max_length=1000, description="자동화 사고")
     reframe: str = Field("", max_length=1000, description="재구성 시도")
     job_role: Optional[str] = Field(None, max_length=60, description="직무/연차 컨텍스트")
+    category: Optional[str] = Field(None, max_length=20, description="리더 상황 카테고리")
+
+
+# 클라이언트가 보내는 카테고리 라벨 → LLM에 주입할 한 줄 컨텍스트.
+# 시스템 프롬프트는 변경하지 않고, 사용자 블록 앞에 prefix로만 붙인다.
+CATEGORY_HINTS = {
+    "성과 압박":  "사용자가 오늘 '성과 압박' 맥락에서 이 일을 떠올렸습니다. 매출·KPI·평가지표 같은 숫자 부담을 염두에 두고 읽어주세요.",
+    "팀원 관리":  "사용자가 오늘 '팀원 관리' 맥락에서 이 일을 떠올렸습니다. 팀원의 행동·태도·동기에 대한 리더로서의 해석을 염두에 두고 읽어주세요.",
+    "평가·고과":  "사용자가 오늘 '평가·고과' 맥락에서 이 일을 떠올렸습니다. 인사평가·면담·승진 결정과 관련된 부담을 염두에 두고 읽어주세요.",
+    "상사·보고":  "사용자가 오늘 '상사·보고' 맥락에서 이 일을 떠올렸습니다. 보고·발표·의사결정자 앞에 서는 상황의 압박을 염두에 두고 읽어주세요.",
+    "팀 내 갈등": "사용자가 오늘 '팀 내 갈등' 맥락에서 이 일을 떠올렸습니다. 동료·팀원 간 의견 충돌·관계 긴장을 염두에 두고 읽어주세요.",
+}
 
 
 class FeedbackPayload(BaseModel):
@@ -73,7 +85,7 @@ class FeedbackPayload(BaseModel):
 
 # ---------- LLM 시스템 프롬프트 ----------
 
-SYSTEM_PROMPT = """당신은 'K직장인용 걱정인형'이라는 이름의 CBT(인지행동치료) 기반 심리 서포터입니다.
+SYSTEM_PROMPT = """당신은 'K리더용 걱정인형'이라는 이름의 CBT(인지행동치료) 기반 심리 서포터입니다.
 한국 직장인이 오늘 겪은 구체적 상황과 자동화된 사고를 읽고, **그 사용자의 상황에만 해당하는 개인화된** 피드백을 제공합니다.
 일반 템플릿 응답이 아니라, 입력 문장에서 단서를 뽑아 전문가가 짚어주듯 답하세요.
 
@@ -199,7 +211,10 @@ def _scrub_payload(p: FeedbackPayload) -> FeedbackPayload:
 
 
 def _build_user_block(entry: DiaryEntry) -> str:
+    hint = CATEGORY_HINTS.get((entry.category or "").strip()) if entry.category else None
+    prefix = f"[상황 맥락]\n{hint}\n\n" if hint else ""
     return (
+        f"{prefix}"
         f"[상황]\n{entry.situation}\n\n"
         f"[그때 떠오른 생각]\n{entry.thought}\n\n"
         f"[스스로 시도한 재구성]\n{entry.reframe or '(작성하지 않음)'}\n\n"
@@ -275,9 +290,9 @@ async def _call_minimax(system_prompt: str, user_block: str) -> Optional[Feedbac
         if result is None:
             return None
 
-        # 가드레일 1·2: 금지 문자가 있으면 이전 응답을 assistant 메시지로 인용하고
-        # 온도를 낮추며 최대 2회까지 재시도.
-        for attempt in range(1, 3):
+        # 가드레일: 금지 문자가 있으면 이전 응답을 assistant 메시지로 인용하고
+        # 온도를 낮추며 1회 재시도. 그래도 남으면 NVIDIA 폴백으로 위임 (지연 보호).
+        for attempt in range(1, 2):
             if not _has_forbidden(result):
                 break
             prev_bad = json.dumps(

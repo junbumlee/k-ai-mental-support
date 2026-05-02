@@ -395,3 +395,41 @@ textarea:focus, input[type="text"]:focus {
   60% { content: ".."; }
   80%, 100% { content: "..."; }
 }
+
+/* ───── 카테고리 칩 (리더 상황 선택) ───── */
+.category-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.category-chip {
+  appearance: none;
+  border: 1px solid var(--surface-soft);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.category-chip:hover {
+  border-color: var(--accent-soft);
+}
+.category-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
+}
+.entry-category {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+.entry-category.hidden { display: none; }
