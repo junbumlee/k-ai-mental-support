@@ -1,4 +1,4 @@
-/* K리더용 걱정인형 — 세 줄 기록 + LLM 피드백 클라이언트 로직 */
+/* 에스리더용 걱정인형 — 세 줄 기록 + LLM 피드백 클라이언트 로직 */
 
 const STORAGE_KEYS = {
   entries: "worrydoll.entries.v1",
@@ -186,7 +186,7 @@ form.addEventListener("submit", async (e) => {
   const label = submitBtn.querySelector(".btn-label");
   const original = label.textContent;
   submitBtn.disabled = true;
-  const stopProgress = startProgressLabel(label, "K리더용 걱정인형이 생각 중이에요");
+  const stopProgress = startProgressLabel(label, "에스리더용 걱정인형이 생각 중이에요");
 
   try {
     const res = await fetch("/api/analyze", {
