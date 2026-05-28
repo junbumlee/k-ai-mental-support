@@ -33,6 +33,10 @@ vercel              # 프리뷰
 vercel --prod       # 프로덕션
 ```
 
+## Health Stack
+
+- test: .venv/bin/python -m pytest
+
 ## Vercel 운영 가이드
 
 - **정본 프로젝트는 하나만 유지**: Vercel 프로젝트명은 `k-ai-mental-support`, 대표 주소는 `https://k-ai-mental-support.vercel.app`

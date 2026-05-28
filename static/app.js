@@ -171,6 +171,13 @@ document.getElementById("clear-all").addEventListener("click", () => {
   toast("기록이 모두 삭제됐어요");
 });
 
+document.getElementById("export-entries").addEventListener("click", () => {
+  exportEntriesAsPdf({
+    title: "K리더용 걱정인형 기록",
+    filenamePrefix: "worrydoll",
+  });
+});
+
 /* ───── STT ───── */
 let currentRec = null;
 let currentRecBtn = null;
@@ -475,6 +482,20 @@ function deleteEntry(id) {
   state.entries = state.entries.filter((r) => r.id !== id);
   localStorage.setItem(STORAGE_KEYS.entries, JSON.stringify(state.entries));
   renderEntries();
+}
+
+function exportEntriesAsPdf(options) {
+  if (!state.entries.length) {
+    toast("내보낼 기록이 아직 없어요");
+    return;
+  }
+  const exporter = window.WorryDollExport;
+  if (!exporter) {
+    toast("내보내기 기능을 불러오지 못했어요");
+    return;
+  }
+  const opened = exporter.openPdfPrintWindow(state.entries, options);
+  toast(opened ? "인쇄 창에서 PDF로 저장할 수 있어요" : "팝업 차단을 해제한 뒤 다시 시도해주세요");
 }
 
 /* ───── Helpers ───── */

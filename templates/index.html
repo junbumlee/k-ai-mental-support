@@ -81,6 +81,9 @@
 
       <!-- 기록 -->
       <section class="panel" data-panel="list">
+        <div class="list-toolbar">
+          <button type="button" class="ghost-btn compact-btn" id="export-entries">PDF 내보내기</button>
+        </div>
         <div id="entries" class="entries"></div>
         <p id="empty-state" class="empty">아직 기록된 걱정이 없어요. 첫 기록을 시작해볼까요?</p>
       </section>
@@ -218,6 +221,7 @@
   </template>
 
   <script type="module" src="/static/analytics.js"></script>
+  <script src="/static/export.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -76,6 +76,9 @@
 
       <!-- 기록 -->
       <section class="panel" data-panel="list">
+        <div class="list-toolbar">
+          <button type="button" class="ghost-btn compact-btn" id="export-entries">PDF 내보내기</button>
+        </div>
         <div id="entries" class="entries"></div>
         <p id="empty-state" class="empty">아직 기록된 고민이 없어요. 오늘의 리더십 고민을 털어놔보세요.</p>
       </section>
@@ -216,6 +219,7 @@
   </template>
 
   <script type="module" src="/static/analytics.js"></script>
+  <script src="/static/export.js"></script>
   <script src="/static/leaders.js"></script>
 </body>
 </html>

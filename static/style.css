@@ -234,6 +234,11 @@ textarea:focus, input[type="text"]:focus, select:focus {
   transition: background 0.15s;
 }
 .ghost-btn:hover { background: var(--accent-soft); }
+.compact-btn {
+  width: auto;
+  padding: 9px 12px;
+  font-size: 13px;
+}
 
 /* ───── Feedback ───── */
 .feedback { margin-top: 16px; }
@@ -297,6 +302,11 @@ textarea:focus, input[type="text"]:focus, select:focus {
 }
 
 /* ───── Entries ───── */
+.list-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
 .entries { display: flex; flex-direction: column; gap: 12px; }
 .entry-card {
   background: var(--surface);
