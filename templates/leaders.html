@@ -84,6 +84,13 @@
       <section class="panel" data-panel="settings">
         <div class="card">
           <h2>내 정보</h2>
+          <div class="account-row">
+            <div>
+              <strong id="account-name">로그인 사용자</strong>
+              <p id="account-email" class="account-email"></p>
+            </div>
+            <a class="logout-link" href="/logout">로그아웃</a>
+          </div>
           <div class="field">
             <label for="role-level">직급 <span class="optional">(피드백에 참고)</span></label>
             <input id="role-level" type="text" placeholder="예: 신임 팀장 1년차, 팀장 후보자" />
@@ -93,8 +100,50 @@
             <input id="team-size" type="text" placeholder="예: 5명, 10명 이상" />
           </div>
           <div class="field">
-            <label for="industry">업종 <span class="optional">(피드백에 참고)</span></label>
-            <input id="industry" type="text" placeholder="예: IT, 제조, 금융, 마케팅" />
+            <label for="company-type">회사 구분</label>
+            <select id="company-type" required>
+              <option value="">선택해주세요</option>
+              <option>대기업</option>
+              <option>중견기업</option>
+              <option>스타트업</option>
+              <option>공공</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="industry">업종</label>
+            <select id="industry" required>
+              <option value="">선택해주세요</option>
+              <option>제조</option>
+              <option>서비스/유통</option>
+              <option>IT</option>
+              <option>금융</option>
+              <option>공공 및 기타</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="age-group">나이</label>
+            <select id="age-group" required>
+              <option value="">선택해주세요</option>
+              <option>30대</option>
+              <option>40대</option>
+              <option>50대 이상</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="org-culture">조직문화</label>
+            <select id="org-culture" required>
+              <option value="">선택해주세요</option>
+              <option>수평적</option>
+              <option>수직적</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="leader-authority">리더 구분</label>
+            <select id="leader-authority" required>
+              <option value="">선택해주세요</option>
+              <option>인사권 있음</option>
+              <option>인사권 없음</option>
+            </select>
           </div>
           <button type="button" class="primary-btn" id="save-profile">저장</button>
         </div>

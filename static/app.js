@@ -7,18 +7,78 @@ const STORAGE_KEYS = {
 
 // 리더 상황 카테고리 — id는 영문, label·placeholder는 사용자/LLM에 노출되는 한국어
 const CATEGORIES = [
-  { id: "performance", label: "성과 압박",  placeholder: "오늘 어떤 숫자나 평가가 가장 무겁게 느껴졌나요?" },
-  { id: "team",        label: "팀원 관리",  placeholder: "오늘 팀원 누구의 어떤 행동이 신경 쓰였나요?" },
-  { id: "evaluation",  label: "평가·고과",  placeholder: "구체적으로 어떤 평가 상황이 떠오르나요?" },
-  { id: "report",      label: "상사·보고",  placeholder: "보고에서 가장 떨렸던 한 순간을 적어보세요" },
-  { id: "conflict",    label: "팀 내 갈등", placeholder: "누구와의 어떤 장면이 머리에서 안 떠나나요?" },
-  { id: "other",       label: "기타",      placeholder: "지금 머릿속에 가장 먼저 떠오르는 한 줄을 적어보세요" },
+  {
+    id: "performance",
+    label: "성과 압박",
+    prompt: "오늘 어떤 숫자나 평가가 가장 무겁게 느껴졌나요?",
+    repeatPrompt: "성과 압박이 반복되고 있어요. 이번에는 어떤 지표, 회의, 평가 기준이 마음을 가장 눌렀나요?",
+    placeholder: "예: 이번 주 KPI 보고에서 목표 달성률 질문을 받았다",
+    repeatPlaceholder: "예: 지난번엔 매출이었고, 오늘은 전환율이 낮다는 말을 듣고 팀장으로서 무능해 보일까 걱정됐다",
+  },
+  {
+    id: "team",
+    label: "팀원 관리",
+    prompt: "오늘 팀원 누구의 어떤 행동이 신경 쓰였나요?",
+    repeatPrompt: "팀원 관리 고민이 다시 올라왔어요. 같은 팀원인지, 다른 팀원인지, 어떤 행동이 반복됐는지 적어볼까요?",
+    placeholder: "예: 팀원이 회의에서 맡은 일을 모호하게 답했다",
+    repeatPlaceholder: "예: 같은 팀원이 두 번째로 일정 질문에 침묵했고, 내가 계속 챙겨야 하나 싶었다",
+  },
+  {
+    id: "competency",
+    label: "업무 역량",
+    prompt: "오늘 어떤 역할이나 업무 역량에서 부족함을 느꼈나요?",
+    repeatPrompt: "업무 역량 걱정이 반복되고 있어요. 이번에는 의사결정, 위임, 전문성, 보고 중 어디에서 흔들렸나요?",
+    placeholder: "예: 새 프로젝트 방향을 결정해야 했는데 내가 충분히 알고 있는지 의심됐다",
+    repeatPlaceholder: "예: 지난번엔 보고서였고, 오늘은 기술 검토 회의에서 질문을 제대로 못 받아칠까 봐 위축됐다",
+  },
+  {
+    id: "evaluation",
+    label: "평가·고과",
+    prompt: "구체적으로 어떤 평가 상황이 떠오르나요?",
+    repeatPrompt: "평가·고과 고민이 이어지고 있어요. 이번에는 누구의 평가, 어떤 기준, 어떤 말이 가장 걸렸나요?",
+    placeholder: "예: 평가 면담에서 낮은 등급을 설명해야 했다",
+    repeatPlaceholder: "예: 지난 면담 이후 같은 팀원의 승진 기준을 설명해야 하는데 납득시키지 못할까 걱정됐다",
+  },
+  {
+    id: "report",
+    label: "상사·보고",
+    prompt: "보고에서 가장 떨렸던 한 순간을 적어보세요.",
+    repeatPrompt: "상사·보고 장면이 반복되고 있어요. 이번에는 어떤 질문, 표정, 후속 지시가 가장 크게 남았나요?",
+    placeholder: "예: 임원 보고에서 예상 못한 질문을 받았다",
+    repeatPlaceholder: "예: 지난번엔 자료 누락이었고, 오늘은 임원의 짧은 침묵 때문에 내 판단을 의심하게 됐다",
+  },
+  {
+    id: "conflict",
+    label: "팀 내 갈등",
+    prompt: "누구와의 어떤 장면이 머리에서 안 떠나나요?",
+    repeatPrompt: "팀 내 갈등이 다시 선택됐어요. 이번에는 누구 사이의 갈등이고, 내가 어떤 역할을 해야 한다고 느꼈나요?",
+    placeholder: "예: 두 팀원이 회의에서 서로 말을 끊었다",
+    repeatPlaceholder: "예: 같은 두 팀원이 세 번째로 의견 충돌했고, 내가 중재를 못해서 팀 분위기가 망가질까 걱정됐다",
+  },
+  {
+    id: "other",
+    label: "기타",
+    prompt: "지금 머릿속에 가장 먼저 떠오르는 한 줄을 적어보세요.",
+    repeatPrompt: "기타 고민이 반복되고 있어요. 이번에는 사람, 업무, 조직 중 어디에 가까운지 한 장면으로 적어볼까요?",
+    placeholder: "예: 퇴근 후에도 오늘 회의 장면이 계속 떠올랐다",
+    repeatPlaceholder: "예: 지난번과 달리 오늘은 팀 전체보다 내 역할이 애매하다는 느낌이 오래 남았다",
+  },
 ];
 const DEFAULT_SITUATION_PLACEHOLDER = "예: 회의에서 내 의견을 말하려다 멈췄다";
+const DEFAULT_SITUATION_QUESTION = "오늘 마음에 걸렸던 순간은 어떤 장면이었나요?";
+const PROFILE_FIELD_MAP = {
+  job_role: "job-role",
+  company_type: "company-type",
+  industry: "industry",
+  age_group: "age-group",
+  org_culture: "org-culture",
+  leader_authority: "leader-authority",
+};
 
 const state = {
   entries: loadEntries(),
   profile: loadProfile(),
+  user: null,
   selectedCategory: null,  // { id, label, placeholder } | null
   pendingFeedback: null,
   pendingEntry: null,
@@ -39,6 +99,7 @@ document.querySelectorAll(".tab").forEach((btn) => {
 /* ───── 카테고리 칩 ───── */
 const categoryRow = document.getElementById("category-row");
 const situationEl = document.getElementById("situation");
+const situationQuestionEl = document.getElementById("situation-question");
 
 CATEGORIES.forEach((cat) => {
   const btn = document.createElement("button");
@@ -63,18 +124,42 @@ function selectCategory(cat) {
     chip.setAttribute("aria-checked", active ? "true" : "false");
   });
 
-  situationEl.placeholder = state.selectedCategory
-    ? state.selectedCategory.placeholder
-    : DEFAULT_SITUATION_PLACEHOLDER;
+  if (!state.selectedCategory) {
+    situationQuestionEl.textContent = DEFAULT_SITUATION_QUESTION;
+    situationEl.placeholder = DEFAULT_SITUATION_PLACEHOLDER;
+    return;
+  }
+
+  const count = getCategoryUseCount(cat.label);
+  const repeated = count > 0;
+  situationQuestionEl.textContent = repeated ? cat.repeatPrompt : cat.prompt;
+  situationEl.placeholder = repeated ? cat.repeatPlaceholder : cat.placeholder;
 }
 
 /* ───── 프로필 ───── */
-const jobInput = document.getElementById("job-role");
-jobInput.value = state.profile.jobRole || "";
-document.getElementById("save-profile").addEventListener("click", () => {
-  state.profile.jobRole = jobInput.value.trim();
-  localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(state.profile));
-  toast("저장됐어요");
+applyProfileToForm(state.profile);
+syncSessionProfile();
+
+document.getElementById("save-profile").addEventListener("click", async () => {
+  const payload = collectProfileFromForm();
+  try {
+    const res = await fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      toast(data.message || "필수 정보를 모두 선택해주세요");
+      return;
+    }
+    state.profile = data.profile || payload;
+    localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(state.profile));
+    applyProfileToForm(state.profile);
+    toast("저장됐어요");
+  } catch {
+    toast("연결이 불안정해요. 다시 시도해주세요");
+  }
 });
 
 /* ───── 전체 삭제 ───── */
@@ -173,12 +258,20 @@ function startSTT(btn) {
 const form = document.getElementById("diary-form");
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  const profile = collectProfileFromForm();
+  state.profile = { ...state.profile, ...profile };
   const entry = {
     situation: document.getElementById("situation").value.trim(),
     thought: document.getElementById("thought").value.trim(),
     reframe: document.getElementById("reframe").value.trim(),
-    job_role: state.profile.jobRole || null,
+    job_role: state.profile.job_role || null,
     category: state.selectedCategory ? state.selectedCategory.label : null,
+    category_count: state.selectedCategory ? getCategoryUseCount(state.selectedCategory.label) + 1 : null,
+    company_type: state.profile.company_type || null,
+    industry: state.profile.industry || null,
+    age_group: state.profile.age_group || null,
+    org_culture: state.profile.org_culture || null,
+    leader_authority: state.profile.leader_authority || null,
   };
   if (!entry.situation || !entry.thought) return;
 
@@ -194,6 +287,10 @@ form.addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(entry),
     });
+    if (res.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
     const data = await res.json();
     state.pendingEntry = entry;
     state.pendingFeedback = data;
@@ -319,6 +416,7 @@ function saveEntry() {
     chip.classList.remove("active");
     chip.setAttribute("aria-checked", "false");
   });
+  situationQuestionEl.textContent = DEFAULT_SITUATION_QUESTION;
   situationEl.placeholder = DEFAULT_SITUATION_PLACEHOLDER;
   document.getElementById("feedback").classList.add("hidden");
   state.pendingEntry = null;
@@ -389,10 +487,66 @@ function loadEntries() {
 }
 function loadProfile() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) || "{}");
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) || "{}");
+    return normalizeProfile(stored);
   } catch {
     return {};
   }
+}
+
+function normalizeProfile(profile) {
+  if (!profile || typeof profile !== "object") return {};
+  return {
+    ...profile,
+    job_role: profile.job_role || profile.jobRole || "",
+  };
+}
+
+function collectProfileFromForm() {
+  const payload = {};
+  Object.entries(PROFILE_FIELD_MAP).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    payload[key] = el ? el.value.trim() : "";
+  });
+  return payload;
+}
+
+function applyProfileToForm(profile) {
+  const normalized = normalizeProfile(profile);
+  Object.entries(PROFILE_FIELD_MAP).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = normalized[key] || "";
+  });
+}
+
+async function syncSessionProfile() {
+  try {
+    const res = await fetch("/api/me");
+    const data = await res.json();
+    if (!data.authenticated) {
+      window.location.href = "/login";
+      return;
+    }
+    state.user = data.user || null;
+    state.profile = normalizeProfile(data.profile || state.profile);
+    localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(state.profile));
+    applyProfileToForm(state.profile);
+    renderAccount();
+  } catch {
+    renderAccount();
+  }
+}
+
+function renderAccount() {
+  const nameEl = document.getElementById("account-name");
+  const emailEl = document.getElementById("account-email");
+  if (!nameEl || !emailEl || !state.user) return;
+  nameEl.textContent = state.user.name || "로그인 사용자";
+  emailEl.textContent = state.user.email || "";
+}
+
+function getCategoryUseCount(label) {
+  return state.entries.filter((record) => record.entry && record.entry.category === label).length;
 }
 
 function formatDate(iso) {

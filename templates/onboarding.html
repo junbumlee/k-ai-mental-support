@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#f6b8c5" />
+  <title>내 정보 입력 · K리더용 걱정인형</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;500;700&display=swap" />
+</head>
+<body>
+  <div class="app auth-app">
+    <main class="auth-card">
+      <div class="brand auth-brand">
+        <span class="brand-dot" aria-hidden="true"></span>
+        <h1>내 정보 입력</h1>
+      </div>
+      <p class="auth-copy"><span id="user-name">{{ user.get("name") or "사용자" }}</span>님의 리더 맥락을 피드백에 반영합니다.</p>
+
+      <form id="onboarding-form" class="profile-form" data-next="{{ next }}">
+        <div class="field">
+          <label for="job-role">직무 / 연차 <span class="optional">(선택)</span></label>
+          <input id="job-role" type="text" placeholder="예: 마케팅 3년차" />
+        </div>
+
+        <div class="field">
+          <label for="company-type">회사 구분</label>
+          <select id="company-type" required>
+            <option value="">선택해주세요</option>
+            <option>대기업</option>
+            <option>중견기업</option>
+            <option>스타트업</option>
+            <option>공공</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="industry">업종</label>
+          <select id="industry" required>
+            <option value="">선택해주세요</option>
+            <option>제조</option>
+            <option>서비스/유통</option>
+            <option>IT</option>
+            <option>금융</option>
+            <option>공공 및 기타</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="age-group">나이</label>
+          <select id="age-group" required>
+            <option value="">선택해주세요</option>
+            <option>30대</option>
+            <option>40대</option>
+            <option>50대 이상</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="org-culture">조직문화</label>
+          <select id="org-culture" required>
+            <option value="">선택해주세요</option>
+            <option>수평적</option>
+            <option>수직적</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="leader-authority">리더 구분</label>
+          <select id="leader-authority" required>
+            <option value="">선택해주세요</option>
+            <option>인사권 있음</option>
+            <option>인사권 없음</option>
+          </select>
+        </div>
+
+        <p id="profile-message" class="form-message" aria-live="polite"></p>
+        <button type="submit" class="primary-btn">저장하고 시작하기</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="/static/onboarding.js"></script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#f6b8c5" />
+  <title>로그인 · K리더용 걱정인형</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;500;700&display=swap" />
+</head>
+<body>
+  <div class="app auth-app">
+    <main class="auth-card">
+      <div class="brand auth-brand">
+        <span class="brand-dot" aria-hidden="true"></span>
+        <h1>K리더용 걱정인형</h1>
+      </div>
+      <p class="auth-copy">리더의 세 줄 마음기록을 안전하게 이어가려면 로그인해주세요.</p>
+
+      {% if error %}
+      <div class="feedback-fallback">
+        {% if error == "google_not_configured" %}
+        Google 로그인을 위한 환경변수가 아직 설정되지 않았어요.
+        {% elif error == "invalid_state" %}
+        로그인 요청이 만료됐어요. 다시 시도해주세요.
+        {% elif error == "invalid_token" %}
+        Google 계정 확인에 실패했어요. 다른 계정으로 다시 시도해주세요.
+        {% else %}
+        로그인 처리 중 문제가 생겼어요. 다시 시도해주세요.
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if oauth_configured %}
+      <a class="primary-btn google-btn" href="/auth/google/start?next={{ next }}">Google로 계속하기</a>
+      {% else %}
+      <div class="feedback-fallback">
+        배포 환경에 <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>을 설정하면 Google 로그인이 활성화됩니다.
+      </div>
+      <button type="button" class="primary-btn" disabled>Google 로그인 준비 중</button>
+      {% endif %}
+
+      <p class="auth-note">로그인 후 회사 구분, 업종, 나이대, 조직문화, 인사권 여부를 한 번만 입력합니다.</p>
+    </main>
+  </div>
+</body>
+</html>

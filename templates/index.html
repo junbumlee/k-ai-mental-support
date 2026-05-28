@@ -41,7 +41,7 @@
           <div class="field">
             <label for="situation">
               <span class="q-index">1</span>
-              오늘 마음에 걸렸던 순간은 어떤 장면이었나요?
+              <span id="situation-question">오늘 마음에 걸렸던 순간은 어떤 장면이었나요?</span>
             </label>
             <div class="input-row">
               <textarea id="situation" name="situation" rows="2" placeholder="예: 회의에서 내 의견을 말하려다 멈췄다" required></textarea>
@@ -89,9 +89,62 @@
       <section class="panel" data-panel="settings">
         <div class="card">
           <h2>내 정보</h2>
+          <div class="account-row">
+            <div>
+              <strong id="account-name">로그인 사용자</strong>
+              <p id="account-email" class="account-email"></p>
+            </div>
+            <a class="logout-link" href="/logout">로그아웃</a>
+          </div>
           <div class="field">
             <label for="job-role">직무 / 연차 <span class="optional">(피드백에 참고)</span></label>
             <input id="job-role" type="text" placeholder="예: 마케팅 3년차" />
+          </div>
+          <div class="field">
+            <label for="company-type">회사 구분</label>
+            <select id="company-type" required>
+              <option value="">선택해주세요</option>
+              <option>대기업</option>
+              <option>중견기업</option>
+              <option>스타트업</option>
+              <option>공공</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="industry">업종</label>
+            <select id="industry" required>
+              <option value="">선택해주세요</option>
+              <option>제조</option>
+              <option>서비스/유통</option>
+              <option>IT</option>
+              <option>금융</option>
+              <option>공공 및 기타</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="age-group">나이</label>
+            <select id="age-group" required>
+              <option value="">선택해주세요</option>
+              <option>30대</option>
+              <option>40대</option>
+              <option>50대 이상</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="org-culture">조직문화</label>
+            <select id="org-culture" required>
+              <option value="">선택해주세요</option>
+              <option>수평적</option>
+              <option>수직적</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="leader-authority">리더 구분</label>
+            <select id="leader-authority" required>
+              <option value="">선택해주세요</option>
+              <option>인사권 있음</option>
+              <option>인사권 없음</option>
+            </select>
           </div>
           <button type="button" class="primary-btn" id="save-profile">저장</button>
         </div>

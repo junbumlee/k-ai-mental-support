@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
 import re
+import secrets
 import time
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -21,8 +26,176 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 logger = logging.getLogger("worrydoll.api")
 
+
+def _load_local_env() -> None:
+    """로컬 uvicorn 실행에서만 .env.local을 보조로 읽는다."""
+    if os.environ.get("VERCEL"):
+        return
+    env_path = BASE_DIR / ".env.local"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_local_env()
+
 app = FastAPI(title="K리더용 걱정인형", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+
+# ---------- 인증 / 세션 ----------
+
+SESSION_COOKIE = "worrydoll_session"
+OAUTH_STATE_COOKIE = "worrydoll_oauth_state"
+SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
+EPHEMERAL_SESSION_SECRET = secrets.token_urlsafe(32)
+PROFILE_REQUIRED_FIELDS = (
+    "company_type",
+    "industry",
+    "age_group",
+    "org_culture",
+    "leader_authority",
+)
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _b64url_decode(data: str) -> bytes:
+    padding = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode((data + padding).encode("ascii"))
+
+
+def _session_secret() -> bytes:
+    secret = (
+        os.environ.get("SESSION_SECRET")
+        or os.environ.get("GOOGLE_CLIENT_SECRET")
+        or EPHEMERAL_SESSION_SECRET
+    )
+    return secret.encode("utf-8")
+
+
+def _sign(value: str) -> str:
+    digest = hmac.new(_session_secret(), value.encode("utf-8"), hashlib.sha256).digest()
+    return _b64url(digest)
+
+
+def _encode_signed(payload: Dict[str, Any]) -> str:
+    body = _b64url(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    return f"{body}.{_sign(body)}"
+
+
+def _decode_signed(token: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not token or "." not in token:
+        return None
+    body, signature = token.rsplit(".", 1)
+    if not hmac.compare_digest(signature, _sign(body)):
+        return None
+    try:
+        payload = json.loads(_b64url_decode(body).decode("utf-8"))
+    except Exception:
+        return None
+    exp = payload.get("exp")
+    if isinstance(exp, (int, float)) and exp < time.time():
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _is_secure_request(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    return request.url.scheme == "https" or forwarded_proto == "https" or bool(os.environ.get("VERCEL"))
+
+
+def _safe_next(value: Optional[str], default: str = "/") -> str:
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return default
+    if value.startswith("/auth/") or value.startswith("/api/"):
+        return default
+    return value
+
+
+def _oauth_configured() -> bool:
+    return bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
+
+
+def _google_redirect_uri(request: Request) -> str:
+    configured = os.environ.get("GOOGLE_REDIRECT_URI")
+    if configured:
+        return configured
+    return str(request.url_for("google_callback"))
+
+
+def _get_session(request: Request) -> Optional[Dict[str, Any]]:
+    return _decode_signed(request.cookies.get(SESSION_COOKIE))
+
+
+def _profile_complete(profile: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    return all(bool(str(profile.get(field) or "").strip()) for field in PROFILE_REQUIRED_FIELDS)
+
+
+def _set_signed_cookie(request: Request, response, name: str, payload: Dict[str, Any], max_age: int) -> None:
+    response.set_cookie(
+        name,
+        _encode_signed(payload),
+        max_age=max_age,
+        httponly=True,
+        secure=_is_secure_request(request),
+        samesite="lax",
+        path="/",
+    )
+
+
+def _clear_cookie(response, name: str) -> None:
+    response.delete_cookie(name, path="/")
+
+
+def _set_session_cookie(request: Request, response, session: Dict[str, Any]) -> None:
+    now = int(time.time())
+    session["iat"] = session.get("iat") or now
+    session["exp"] = now + SESSION_MAX_AGE_SECONDS
+    _set_signed_cookie(request, response, SESSION_COOKIE, session, SESSION_MAX_AGE_SECONDS)
+
+
+def _require_session_redirect(request: Request) -> Optional[RedirectResponse]:
+    session = _get_session(request)
+    if not session:
+        return RedirectResponse(f"/login?next={_safe_next(request.url.path)}", status_code=303)
+    if not _profile_complete(session.get("profile")):
+        return RedirectResponse(f"/onboarding?next={_safe_next(request.url.path)}", status_code=303)
+    return None
+
+
+def _clean_profile(data: Dict[str, Any]) -> Dict[str, str]:
+    fields = (
+        "job_role",
+        "role_level",
+        "team_size",
+        "company_type",
+        "industry",
+        "age_group",
+        "org_culture",
+        "leader_authority",
+    )
+    cleaned: Dict[str, str] = {}
+    for field in fields:
+        value = data.get(field)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            cleaned[field] = text[:80]
+    return cleaned
 
 
 # ---------- 안전 장치 ----------
@@ -61,6 +234,23 @@ class DiaryEntry(BaseModel):
     reframe: str = Field("", max_length=1000, description="재구성 시도")
     job_role: Optional[str] = Field(None, max_length=60, description="직무/연차 컨텍스트")
     category: Optional[str] = Field(None, max_length=20, description="리더 상황 카테고리")
+    category_count: Optional[int] = Field(None, ge=1, le=1000, description="같은 카테고리 선택 횟수")
+    company_type: Optional[str] = Field(None, max_length=20, description="회사 구분")
+    industry: Optional[str] = Field(None, max_length=30, description="업종")
+    age_group: Optional[str] = Field(None, max_length=20, description="나이대")
+    org_culture: Optional[str] = Field(None, max_length=20, description="조직문화")
+    leader_authority: Optional[str] = Field(None, max_length=20, description="리더 구분")
+
+
+class UserProfile(BaseModel):
+    job_role: Optional[str] = Field(None, max_length=60)
+    role_level: Optional[str] = Field(None, max_length=60)
+    team_size: Optional[str] = Field(None, max_length=30)
+    company_type: Optional[str] = Field(None, max_length=20)
+    industry: Optional[str] = Field(None, max_length=30)
+    age_group: Optional[str] = Field(None, max_length=20)
+    org_culture: Optional[str] = Field(None, max_length=20)
+    leader_authority: Optional[str] = Field(None, max_length=20)
 
 
 # 클라이언트가 보내는 카테고리 라벨 → LLM에 주입할 한 줄 컨텍스트.
@@ -68,6 +258,7 @@ class DiaryEntry(BaseModel):
 CATEGORY_HINTS = {
     "성과 압박":  "사용자가 오늘 '성과 압박' 맥락에서 이 일을 떠올렸습니다. 매출·KPI·평가지표 같은 숫자 부담을 염두에 두고 읽어주세요.",
     "팀원 관리":  "사용자가 오늘 '팀원 관리' 맥락에서 이 일을 떠올렸습니다. 팀원의 행동·태도·동기에 대한 리더로서의 해석을 염두에 두고 읽어주세요.",
+    "업무 역량":  "사용자가 오늘 '업무 역량' 맥락에서 이 일을 떠올렸습니다. 역할 전환, 실무 전문성, 의사결정 자신감, 위임 역량에 대한 부담을 염두에 두고 읽어주세요.",
     "평가·고과":  "사용자가 오늘 '평가·고과' 맥락에서 이 일을 떠올렸습니다. 인사평가·면담·승진 결정과 관련된 부담을 염두에 두고 읽어주세요.",
     "상사·보고":  "사용자가 오늘 '상사·보고' 맥락에서 이 일을 떠올렸습니다. 보고·발표·의사결정자 앞에 서는 상황의 압박을 염두에 두고 읽어주세요.",
     "팀 내 갈등": "사용자가 오늘 '팀 내 갈등' 맥락에서 이 일을 떠올렸습니다. 동료·팀원 간 의견 충돌·관계 긴장을 염두에 두고 읽어주세요.",
@@ -212,15 +403,38 @@ def _scrub_payload(p: FeedbackPayload) -> FeedbackPayload:
     )
 
 
+def _format_profile_context(entry) -> str:
+    pairs = [
+        ("직무/연차", getattr(entry, "job_role", None)),
+        ("직급", getattr(entry, "role_level", None)),
+        ("팀 규모", getattr(entry, "team_size", None)),
+        ("회사 구분", getattr(entry, "company_type", None)),
+        ("업종", getattr(entry, "industry", None)),
+        ("나이대", getattr(entry, "age_group", None)),
+        ("조직문화", getattr(entry, "org_culture", None)),
+        ("리더 구분", getattr(entry, "leader_authority", None)),
+    ]
+    lines = [f"- {label}: {value}" for label, value in pairs if value]
+    return "\n".join(lines) if lines else "(미입력)"
+
+
 def _build_user_block(entry: DiaryEntry) -> str:
     hint = CATEGORY_HINTS.get((entry.category or "").strip()) if entry.category else None
     prefix = f"[상황 맥락]\n{hint}\n\n" if hint else ""
+    repeat = ""
+    if entry.category and entry.category_count and entry.category_count > 1:
+        repeat = (
+            f"[반복 맥락]\n"
+            f"브라우저 저장 기록 기준 '{entry.category}' 카테고리를 {entry.category_count}번째 선택했습니다. "
+            "같은 범주 안에서도 이번에는 어떤 대상, 장면, 기준이 달라졌는지 더 구체적으로 짚어주세요.\n\n"
+        )
     return (
         f"{prefix}"
+        f"{repeat}"
         f"[상황]\n{entry.situation}\n\n"
         f"[그때 떠오른 생각]\n{entry.thought}\n\n"
         f"[스스로 시도한 재구성]\n{entry.reframe or '(작성하지 않음)'}\n\n"
-        f"[직무/연차]\n{entry.job_role or '(미입력)'}"
+        f"[사용자 정보]\n{_format_profile_context(entry)}"
     )
 
 
@@ -404,8 +618,168 @@ def _contains_crisis(text: str) -> bool:
 
 # ---------- 라우트 ----------
 
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request) -> HTMLResponse:
+    next_path = _safe_next(request.query_params.get("next"))
+    session = _get_session(request)
+    if session:
+        destination = next_path if _profile_complete(session.get("profile")) else f"/onboarding?next={next_path}"
+        return RedirectResponse(destination, status_code=303)
+    return TEMPLATES.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "next": next_path,
+            "oauth_configured": _oauth_configured(),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
+@app.get("/onboarding", response_class=HTMLResponse)
+async def onboarding_page(request: Request) -> HTMLResponse:
+    session = _get_session(request)
+    if not session:
+        return RedirectResponse(f"/login?next={_safe_next(request.query_params.get('next'))}", status_code=303)
+    return TEMPLATES.TemplateResponse(
+        "onboarding.html",
+        {
+            "request": request,
+            "user": session.get("user") or {},
+            "profile": session.get("profile") or {},
+            "next": _safe_next(request.query_params.get("next")),
+        },
+    )
+
+
+@app.get("/auth/google/start")
+async def google_start(request: Request):
+    if not _oauth_configured():
+        return RedirectResponse("/login?error=google_not_configured", status_code=303)
+
+    state = secrets.token_urlsafe(32)
+    next_path = _safe_next(request.query_params.get("next"))
+    state_payload = {"state": state, "next": next_path, "exp": int(time.time()) + 600}
+    params = {
+        "client_id": os.environ["GOOGLE_CLIENT_ID"],
+        "redirect_uri": _google_redirect_uri(request),
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "prompt": "select_account",
+    }
+    response = RedirectResponse(f"{GOOGLE_AUTH_URL}?{urlencode(params)}", status_code=303)
+    _set_signed_cookie(request, response, OAUTH_STATE_COOKIE, state_payload, 600)
+    return response
+
+
+@app.get("/auth/google/callback")
+async def google_callback(request: Request):
+    if not _oauth_configured():
+        return RedirectResponse("/login?error=google_not_configured", status_code=303)
+
+    state_payload = _decode_signed(request.cookies.get(OAUTH_STATE_COOKIE))
+    state = request.query_params.get("state")
+    code = request.query_params.get("code")
+    if not state_payload or state_payload.get("state") != state or not code:
+        return RedirectResponse("/login?error=invalid_state", status_code=303)
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            token_response = await client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": os.environ["GOOGLE_CLIENT_ID"],
+                    "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
+                    "redirect_uri": _google_redirect_uri(request),
+                    "grant_type": "authorization_code",
+                },
+            )
+            token_response.raise_for_status()
+            id_token = token_response.json().get("id_token")
+            if not id_token:
+                return RedirectResponse("/login?error=missing_token", status_code=303)
+            tokeninfo_response = await client.get(GOOGLE_TOKENINFO_URL, params={"id_token": id_token})
+            tokeninfo_response.raise_for_status()
+            tokeninfo = tokeninfo_response.json()
+    except Exception:
+        logger.exception("Google OAuth callback failed")
+        return RedirectResponse("/login?error=oauth_failed", status_code=303)
+
+    email_verified = tokeninfo.get("email_verified") in (True, "true", "True", "1")
+    if tokeninfo.get("aud") != os.environ["GOOGLE_CLIENT_ID"] or not email_verified:
+        return RedirectResponse("/login?error=invalid_token", status_code=303)
+
+    user = {
+        "sub": tokeninfo.get("sub", ""),
+        "email": tokeninfo.get("email", ""),
+        "name": tokeninfo.get("name") or tokeninfo.get("email", ""),
+        "picture": tokeninfo.get("picture", ""),
+    }
+    session = {"user": user, "profile": {}}
+    next_path = _safe_next(state_payload.get("next"))
+    response = RedirectResponse(f"/onboarding?next={next_path}", status_code=303)
+    _clear_cookie(response, OAUTH_STATE_COOKIE)
+    _set_session_cookie(request, response, session)
+    return response
+
+
+@app.get("/logout")
+async def logout_page():
+    response = RedirectResponse("/login", status_code=303)
+    _clear_cookie(response, SESSION_COOKIE)
+    return response
+
+
+@app.post("/api/logout")
+async def logout_api() -> JSONResponse:
+    response = JSONResponse({"ok": True})
+    _clear_cookie(response, SESSION_COOKIE)
+    return response
+
+
+@app.get("/api/me")
+async def me(request: Request) -> JSONResponse:
+    session = _get_session(request)
+    if not session:
+        return JSONResponse({"authenticated": False})
+    return JSONResponse(
+        {
+            "authenticated": True,
+            "user": session.get("user") or {},
+            "profile": session.get("profile") or {},
+            "profile_complete": _profile_complete(session.get("profile")),
+        }
+    )
+
+
+@app.post("/api/profile")
+async def save_profile(profile: UserProfile, request: Request) -> JSONResponse:
+    session = _get_session(request)
+    if not session:
+        return JSONResponse({"ok": False, "message": "로그인이 필요합니다."}, status_code=401)
+
+    current = session.get("profile") if isinstance(session.get("profile"), dict) else {}
+    merged = {**current, **_clean_profile(profile.model_dump())}
+    missing = [field for field in PROFILE_REQUIRED_FIELDS if not merged.get(field)]
+    if missing:
+        return JSONResponse(
+            {"ok": False, "message": "필수 사용자 정보를 모두 선택해주세요.", "missing": missing},
+            status_code=400,
+        )
+
+    session["profile"] = merged
+    response = JSONResponse({"ok": True, "profile": merged})
+    _set_session_cookie(request, response, session)
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
+    redirect = _require_session_redirect(request)
+    if redirect:
+        return redirect
     return TEMPLATES.TemplateResponse("index.html", {"request": request})
 
 
@@ -413,6 +787,9 @@ async def index(request: Request) -> HTMLResponse:
 async def health() -> dict:
     return {
         "ok": True,
+        "auth": {
+            "google_configured": _oauth_configured(),
+        },
         "primary": {
             "configured": bool(os.environ.get("MINIMAX_API_KEY")),
             "model": os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL),
@@ -425,7 +802,9 @@ async def health() -> dict:
 
 
 @app.post("/api/analyze")
-async def analyze(entry: DiaryEntry) -> JSONResponse:
+async def analyze(entry: DiaryEntry, request: Request) -> JSONResponse:
+    if not _get_session(request):
+        return JSONResponse({"message": "로그인이 필요합니다."}, status_code=401)
     text = f"{entry.situation}\n{entry.thought}\n{entry.reframe}"
     if _contains_crisis(text):
         return JSONResponse(CRISIS_RESPONSE)
@@ -451,6 +830,10 @@ class LeaderEntry(BaseModel):
     role_level: Optional[str] = Field(None, max_length=60, description="직급")
     team_size: Optional[str] = Field(None, max_length=30, description="팀 규모")
     industry: Optional[str] = Field(None, max_length=60, description="업종")
+    company_type: Optional[str] = Field(None, max_length=20, description="회사 구분")
+    age_group: Optional[str] = Field(None, max_length=20, description="나이대")
+    org_culture: Optional[str] = Field(None, max_length=20, description="조직문화")
+    leader_authority: Optional[str] = Field(None, max_length=20, description="리더 구분")
 
 
 LEADER_SYSTEM_PROMPT = """당신은 '걱정인형: 리더스'라는 이름의 CBT(인지행동치료) 기반 리더십 심리 서포터입니다.
@@ -506,19 +889,22 @@ def _build_leader_user_block(entry: LeaderEntry) -> str:
         f"[오늘의 상황]\n{entry.situation}\n\n"
         f"[그때 떠오른 생각]\n{entry.thought}\n\n"
         f"[스스로 시도한 재구성]\n{entry.reframe or '(작성하지 않음)'}\n\n"
-        f"[직급]\n{entry.role_level or '(미입력)'}\n\n"
-        f"[팀 규모]\n{entry.team_size or '(미입력)'}\n\n"
-        f"[업종]\n{entry.industry or '(미입력)'}"
+        f"[사용자 정보]\n{_format_profile_context(entry)}"
     )
 
 
 @app.get("/leaders", response_class=HTMLResponse)
 async def leaders_page(request: Request) -> HTMLResponse:
+    redirect = _require_session_redirect(request)
+    if redirect:
+        return redirect
     return TEMPLATES.TemplateResponse("leaders.html", {"request": request})
 
 
 @app.post("/api/leader")
-async def leader_analyze(entry: LeaderEntry) -> JSONResponse:
+async def leader_analyze(entry: LeaderEntry, request: Request) -> JSONResponse:
+    if not _get_session(request):
+        return JSONResponse({"message": "로그인이 필요합니다."}, status_code=401)
     text = f"{entry.situation}\n{entry.thought}\n{entry.reframe}"
     if _contains_crisis(text):
         return JSONResponse(CRISIS_RESPONSE)

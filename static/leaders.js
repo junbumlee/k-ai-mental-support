@@ -5,9 +5,20 @@ const STORAGE_KEYS = {
   profile: "leaders.profile.v1",
 };
 
+const PROFILE_FIELD_MAP = {
+  role_level: "role-level",
+  team_size: "team-size",
+  company_type: "company-type",
+  industry: "industry",
+  age_group: "age-group",
+  org_culture: "org-culture",
+  leader_authority: "leader-authority",
+};
+
 const state = {
   entries: loadEntries(),
   profile: loadProfile(),
+  user: null,
   pendingFeedback: null,
   pendingEntry: null,
 };
@@ -25,20 +36,29 @@ document.querySelectorAll(".tab").forEach((btn) => {
 });
 
 /* ───── 프로필 ───── */
-const roleLevelInput = document.getElementById("role-level");
-const teamSizeInput = document.getElementById("team-size");
-const industryInput = document.getElementById("industry");
+applyProfileToForm(state.profile);
+syncSessionProfile();
 
-roleLevelInput.value = state.profile.roleLevel || "";
-teamSizeInput.value = state.profile.teamSize || "";
-industryInput.value = state.profile.industry || "";
-
-document.getElementById("save-profile").addEventListener("click", () => {
-  state.profile.roleLevel = roleLevelInput.value.trim();
-  state.profile.teamSize = teamSizeInput.value.trim();
-  state.profile.industry = industryInput.value.trim();
-  localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(state.profile));
-  toast("저장됐어요");
+document.getElementById("save-profile").addEventListener("click", async () => {
+  const payload = collectProfileFromForm();
+  try {
+    const res = await fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      toast(data.message || "필수 정보를 모두 선택해주세요");
+      return;
+    }
+    state.profile = data.profile || payload;
+    localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(state.profile));
+    applyProfileToForm(state.profile);
+    toast("저장됐어요");
+  } catch {
+    toast("연결이 불안정해요. 다시 시도해주세요");
+  }
 });
 
 /* ───── 전체 삭제 ───── */
@@ -133,13 +153,19 @@ function startSTT(btn) {
 const form = document.getElementById("leader-form");
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  const profile = collectProfileFromForm();
+  state.profile = { ...state.profile, ...profile };
   const entry = {
     situation: document.getElementById("situation").value.trim(),
     thought: document.getElementById("thought").value.trim(),
     reframe: document.getElementById("reframe").value.trim(),
-    role_level: state.profile.roleLevel || null,
-    team_size: state.profile.teamSize || null,
+    role_level: state.profile.role_level || null,
+    team_size: state.profile.team_size || null,
     industry: state.profile.industry || null,
+    company_type: state.profile.company_type || null,
+    age_group: state.profile.age_group || null,
+    org_culture: state.profile.org_culture || null,
+    leader_authority: state.profile.leader_authority || null,
   };
   if (!entry.situation || !entry.thought) return;
 
@@ -155,6 +181,10 @@ form.addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(entry),
     });
+    if (res.status === 401) {
+      window.location.href = "/login?next=/leaders";
+      return;
+    }
     const data = await res.json();
     state.pendingEntry = entry;
     state.pendingFeedback = data;
@@ -339,10 +369,63 @@ function loadEntries() {
 }
 function loadProfile() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) || "{}");
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.profile) || "{}");
+    return normalizeProfile(stored);
   } catch {
     return {};
   }
+}
+
+function normalizeProfile(profile) {
+  if (!profile || typeof profile !== "object") return {};
+  return {
+    ...profile,
+    role_level: profile.role_level || profile.roleLevel || "",
+    team_size: profile.team_size || profile.teamSize || "",
+  };
+}
+
+function collectProfileFromForm() {
+  const payload = {};
+  Object.entries(PROFILE_FIELD_MAP).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    payload[key] = el ? el.value.trim() : "";
+  });
+  return payload;
+}
+
+function applyProfileToForm(profile) {
+  const normalized = normalizeProfile(profile);
+  Object.entries(PROFILE_FIELD_MAP).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = normalized[key] || "";
+  });
+}
+
+async function syncSessionProfile() {
+  try {
+    const res = await fetch("/api/me");
+    const data = await res.json();
+    if (!data.authenticated) {
+      window.location.href = "/login?next=/leaders";
+      return;
+    }
+    state.user = data.user || null;
+    state.profile = normalizeProfile(data.profile || state.profile);
+    localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(state.profile));
+    applyProfileToForm(state.profile);
+    renderAccount();
+  } catch {
+    renderAccount();
+  }
+}
+
+function renderAccount() {
+  const nameEl = document.getElementById("account-name");
+  const emailEl = document.getElementById("account-email");
+  if (!nameEl || !emailEl || !state.user) return;
+  nameEl.textContent = state.user.name || "로그인 사용자";
+  emailEl.textContent = state.user.email || "";
 }
 
 function formatDate(iso) {
