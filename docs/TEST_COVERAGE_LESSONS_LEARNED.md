@@ -17,7 +17,7 @@
 - 로그인하지 않은 사용자의 분석 API 접근 차단
 - 프로필 미완성 사용자의 온보딩 강제
 - 자해·자살 신호 감지 시 LLM 호출 없이 위기 안내 반환
-- OpenRouter 실패 시 MiniMax direct를 먼저 시도하고, 그 다음 NVIDIA 폴백, 모두 실패 시 템플릿 fallback 반환
+- OpenRouter 실패 시 NVIDIA 폴백, 둘 다 실패 시 템플릿 fallback 반환
 - LLM 응답의 JSON 추출 실패나 금지문자 혼입 방어
 
 커버리지는 이 위험 경로가 테스트됐는지 확인하는 지표로 쓰는 것이 좋다. 숫자 자체가 목적이 되면 덜 중요한 줄만 실행하고 핵심 회귀는 놓칠 수 있다.
@@ -70,7 +70,7 @@ OpenRouter, MiniMax, NVIDIA, Google OAuth는 실제 네트워크를 타면 테�
 
 - 위기 문구가 있으면 `mode=crisis` 반환
 - 핫라인 정보가 포함됨
-- 불필요한 OpenRouter/MiniMax/NVIDIA 함수가 호출되면 테스트가 실패하도록 설정
+- OpenRouter/NVIDIA 함수가 호출되면 테스트가 실패하도록 설정
 
 이 테스트는 단순 커버리지 이상의 의미가 있다. 향후 리팩터링 중 실수로 LLM을 먼저 호출하는 구조가 들어오면 바로 잡아낸다.
 

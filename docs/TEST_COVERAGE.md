@@ -71,9 +71,8 @@ python -m pytest
 ### CBT 분석 API
 
 - 위기 문구가 들어오면 LLM 호출 없이 즉시 `mode=crisis` 반환
-- OpenRouter 1차 성공 시 MiniMax direct/NVIDIA 폴백 미호출
-- OpenRouter 실패 시 MiniMax direct로 심층진단 생성
-- OpenRouter/MiniMax direct/NVIDIA 모두 실패 시 템플릿 fallback 반환
+- OpenRouter 1차 성공 시 NVIDIA 폴백 미호출
+- OpenRouter/NVIDIA 모두 실패 시 템플릿 fallback 반환
 - payload validation 실패 시 `422`
 
 ### LLM provider wrapper
