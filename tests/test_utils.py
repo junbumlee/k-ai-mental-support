@@ -59,6 +59,48 @@ def test_text_safety_helpers_extract_normalize_and_scrub_json():
     assert scrubbed.distortions == [""]
 
 
+def test_deep_diagnosis_parse_scrub_and_prompt_builder(complete_profile):
+    raw = """```json
+{"title":"職務 스트레스 리포트","summary":"KPI 보고가 반복됩니다.","key_patterns":["責任을 혼자 집니다"],"risk_signals":["긴장이 남습니다"],"protective_factors":["기록합니다"],"action_plan":["다음 보고 전 질문합니다"],"reflection_questions":["무엇을 확인했나요?"]}
+```"""
+
+    payload = api_index._parse_diagnosis_json(raw)
+    assert payload.mode == "diagnosis"
+    assert api_index._has_forbidden_diagnosis(payload) is True
+
+    scrubbed = api_index._scrub_diagnosis_payload(payload)
+    assert api_index._has_forbidden_diagnosis(scrubbed) is False
+    assert scrubbed.key_patterns == ["을 혼자 집니다"]
+
+    request = api_index.DeepDiagnosisRequest(
+        diagnosis_type="stress",
+        profile=api_index.UserProfile(**complete_profile),
+        entries=[
+            api_index.DiagnosisEntry(
+                createdAt="2026-06-17T10:00:00.000Z",
+                category="성과 압박",
+                situation="KPI 보고에서 질문을 받았다",
+                thought="내가 부족하다",
+                feedback="다음 회의에서 기준을 확인해보세요.",
+            )
+        ],
+        community_posts=[
+            api_index.DiagnosisCommunityPost(
+                category="상사·보고",
+                content="임원 보고 후 침묵이 마음에 남는다",
+                comments=["비슷한 경험이 있어요"],
+            )
+        ],
+    )
+    user_block = api_index._build_deep_diagnosis_user_block(
+        request, api_index.UserProfile(**complete_profile)
+    )
+    assert "[진단 종류]" in user_block
+    assert "직무 스트레스 진단" in user_block
+    assert "KPI 보고에서 질문을 받았다" in user_block
+    assert "임원 보고 후 침묵" in user_block
+
+
 def test_crisis_and_prompt_builders_include_safety_and_context():
     assert api_index._contains_crisis("오늘은 정말 죽고 싶다는 생각이 들었다") is True
     assert api_index._contains_crisis("오늘 회의가 길었다") is False

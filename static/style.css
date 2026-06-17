@@ -664,6 +664,49 @@ textarea:focus, input[type="text"]:focus, input[type="search"]:focus, select:foc
   text-align: left;
   background: var(--surface);
 }
+.diagnosis-result {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.diagnosis-result.hidden {
+  display: none;
+}
+.diagnosis-result h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 16px;
+}
+.diagnosis-summary {
+  margin: 0 0 14px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.diagnosis-section {
+  margin-top: 14px;
+}
+.diagnosis-section h4 {
+  margin: 0 0 6px;
+  color: var(--accent-strong);
+  font-size: 13px;
+}
+.diagnosis-section ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.diagnosis-section li + li {
+  margin-top: 6px;
+}
+.diagnosis-disclaimer {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .report-feed-header h2 {
   margin: 4px 0 10px;
   font-size: 16px;

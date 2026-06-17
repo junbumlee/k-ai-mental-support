@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **백엔드**: FastAPI (Vercel @vercel/python 서버리스 함수)
 - **프론트엔드**: Jinja2 템플릿 + Vanilla JS (번들러 없음)
-- **LLM**: MiniMax Token Plan API (기본 `MiniMax-M2.7` — Token Plan이 `MiniMax-Text-01`/`M1`은 권한 없음으로 2061 반환함. `chatcompletion_v2` OpenAI 호환)
+- **LLM**: OpenRouter 1차 provider (`minimax/minimax-m2.7`) + NVIDIA fallback (`minimaxai/minimax-m2.7`). MiniMax Token Plan 직접 호출 코드는 레거시로 남아 있음.
 - **저장소**: 브라우저 `localStorage` (MVP) — 서버는 stateless
 - **STT**: Web Speech API (브라우저 네이티브)
 - **Analytics**: `@vercel/analytics` (브라우저 직접 import가 어려운 구조라 `static/vendor/vercel-analytics.mjs`로 복사해 사용)
@@ -62,13 +62,13 @@ vercel inspect k-ai-mental-support.vercel.app
 - `vercel build`가 로컬에 `pyproject.toml`, `uv.lock`를 임시 생성할 수 있음. 이 저장소의 기준 의존성 파일은 `requirements.txt`이며, 임시 파일은 커밋하지 말 것.
 - `.vercel/` 디렉터리는 로컬 링크/환경변수 캐시용이다. Git에는 올리지 않는다.
 
-LLM 피드백 활성화에는 `MINIMAX_API_KEY` 환경변수 필요 (옵션: `MINIMAX_MODEL`, `MINIMAX_BASE_URL`). 미설정 시 `api/index.py`의 `_fallback_feedback()`이 템플릿 응답을 반환 — UI 흐름은 막히지 않음.
+LLM 피드백 활성화에는 `OPENROUTER_API_KEY` 환경변수 필요 (옵션: `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL`, `OPENROUTER_REASONING_EFFORT`). OpenRouter 실패 시 `NVIDIA_API_KEY` fallback을 시도하고, 모두 실패하면 `api/index.py`의 `_fallback_feedback()`이 템플릿 응답을 반환 — UI 흐름은 막히지 않음.
 
 ## 아키텍처
 
 ### 요청 흐름
 
-`브라우저 → POST /api/analyze → 크라이시스 키워드 검사 → (통과 시) MiniMax /v1/text/chatcompletion_v2 → JSON 파싱 → FeedbackPayload 반환 → localStorage 저장`
+`브라우저 → POST /api/analyze → 크라이시스 키워드 검사 → (통과 시) OpenRouter /api/v1/chat/completions → JSON 파싱 → FeedbackPayload 반환 → localStorage 저장`
 
 ### 핵심 파일
 

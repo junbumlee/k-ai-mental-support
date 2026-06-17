@@ -24,6 +24,77 @@ def test_call_minimax_returns_none_without_api_key():
     assert run(api_index._call_minimax("system", "user")) is None
 
 
+def test_call_openrouter_returns_none_without_api_key():
+    assert run(api_index._call_openrouter("system", "user")) is None
+
+
+def test_call_openrouter_success_and_scrub(monkeypatch):
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers, json):
+            assert url == api_index.OPENROUTER_DEFAULT_URL
+            assert headers["Authorization"] == "Bearer openrouter-key"
+            assert headers["X-Title"] == "K AI Mental Support"
+            assert json["model"] == api_index.OPENROUTER_DEFAULT_MODEL
+            assert json["reasoning"] == {"effort": "minimal", "exclude": True}
+            return FakeResponse(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": (
+                                    '{"empathy":"주간회의가 무거웠겠어요","distortions":["個人化"],'
+                                    '"reframe":"다른 근거를 볼 수 있을까요?","question":"다음 회의에서 질문하세요"}'
+                                )
+                            }
+                        }
+                    ]
+                }
+            )
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-key")
+    monkeypatch.setattr(api_index.httpx, "AsyncClient", FakeAsyncClient)
+
+    result = run(api_index._call_openrouter("system", "user"))
+
+    assert result.mode == "feedback"
+    assert result.distortions == [""]
+
+
+def test_call_openrouter_returns_none_for_empty_choices_and_errors(monkeypatch):
+    class EmptyChoicesClient:
+        def __init__(self, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers, json):
+            return FakeResponse({"choices": []})
+
+    class FailingClient(EmptyChoicesClient):
+        async def post(self, url, headers, json):
+            raise RuntimeError("network down")
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-key")
+    monkeypatch.setattr(api_index.httpx, "AsyncClient", EmptyChoicesClient)
+    assert run(api_index._call_openrouter("system", "user")) is None
+
+    monkeypatch.setattr(api_index.httpx, "AsyncClient", FailingClient)
+    assert run(api_index._call_openrouter("system", "user")) is None
+
+
 def test_call_minimax_model_success_with_list_content_and_scrubbing(monkeypatch):
     class FakeAsyncClient:
         def __init__(self, timeout):

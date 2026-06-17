@@ -23,7 +23,7 @@ api/index.py coverage: 92.94%
 | `tests/conftest.py` | FastAPI 테스트 클라이언트, 세션 쿠키, 환경변수 격리 fixture |
 | `tests/test_utils.py` | 세션 서명, 안전 리다이렉트, 위기 문구, JSON 추출, 금지문자 제거, 프롬프트 구성 테스트 |
 | `tests/test_routes.py` | 인증/온보딩/프로필/분석/리더 API 라우트 테스트 |
-| `tests/test_providers.py` | MiniMax/NVIDIA LLM 호출 래퍼의 성공·실패·스크러빙 분기 테스트 |
+| `tests/test_providers.py` | OpenRouter/MiniMax/NVIDIA LLM 호출 래퍼의 성공·실패·스크러빙 분기 테스트 |
 
 ## 실행 방법
 
@@ -71,13 +71,14 @@ python -m pytest
 ### CBT 분석 API
 
 - 위기 문구가 들어오면 LLM 호출 없이 즉시 `mode=crisis` 반환
-- MiniMax 1차 성공 시 NVIDIA 폴백 미호출
-- MiniMax/NVIDIA 모두 실패 시 템플릿 fallback 반환
+- OpenRouter 1차 성공 시 NVIDIA 폴백 미호출
+- OpenRouter/NVIDIA 모두 실패 시 템플릿 fallback 반환
 - payload validation 실패 시 `422`
 
 ### LLM provider wrapper
 
 - API key 미설정 시 외부 호출 없이 `None`
+- OpenRouter 성공, 빈 choices, 네트워크 예외 처리
 - MiniMax `base_resp` 실패, 빈 choices, HTTP/parse 실패 처리
 - MiniMax content가 list로 올 때 병합
 - NVIDIA 성공, 빈 choices, 네트워크 예외 처리
@@ -106,7 +107,7 @@ TOTAL            436     20    102     18  92.94%
 
 아직 의도적으로 남겨둔 영역:
 
-- 실제 Google OAuth 서버, MiniMax, NVIDIA API를 호출하는 통합 테스트는 없다. 현재 테스트는 fake async client로 네트워크를 차단한다.
+- 실제 Google OAuth 서버, OpenRouter, MiniMax, NVIDIA API를 호출하는 통합 테스트는 없다. 현재 테스트는 fake async client로 네트워크를 차단한다.
 - 브라우저 `localStorage`, 탭 전환, STT, 정적 JS 렌더링은 커버하지 않는다.
 - Jinja 템플릿 HTML의 세부 DOM 구조 검증은 하지 않는다.
 - `.env.local` 로딩 분기는 테스트하지 않았다. 테스트 환경에서는 환경변수를 fixture로 격리한다.

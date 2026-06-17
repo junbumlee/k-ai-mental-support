@@ -10,7 +10,7 @@
 | 음성 입력 (Voice Dump) | ✅ 완료 | static/leaders.js | STT 버튼 3개 필드 모두 적용, ko-KR |
 | 리더 전용 컨텍스트 입력 | ✅ 완료 | LeaderEntry 모델 | 직급, 팀 규모, 업종 3개 필드 |
 | 리더 특화 인지오류 감지 | ✅ 완료 | LEADER_SYSTEM_PROMPT | 7종: 당위 진술, 개인화, 파국화, 독심술, 성급한 일반화, 완벽주의·통제, 예언자적 오류 |
-| AI 피드백 생성 | ✅ 완료 | POST /api/leader | MiniMax → NVIDIA → 템플릿 폴백 3단계 |
+| AI 피드백 생성 | ✅ 완료 | POST /api/leader | OpenRouter → NVIDIA → 템플릿 폴백 3단계 |
 | 상황별 AI 가이드 (성과압박/고과/경쟁) | ⚠️ 부분 | LEADER_SYSTEM_PROMPT 예시 | 프롬프트 예시 1개만 있음, 카테고리 분류 없음 |
 | AI가 핵심 요약 리포트화 | ❌ 미구현 | - | Voice Dump는 있지만 AI 요약은 없음 |
 
@@ -41,8 +41,9 @@
 | 기능 | 구현 상태 | 위치 |
 | :--- | :---: | :--- |
 | 크라이시스 키워드 감지 + 핫라인 | ✅ 완료 | _contains_crisis(), 8개 패턴 |
-| MiniMax LLM 연동 | ✅ 완료 | _call_minimax() |
-| NVIDIA kimi-k2.5 폴백 | ✅ 완료 | _call_nvidia() |
+| OpenRouter MiniMax M2.7 연동 | ✅ 완료 | _call_openrouter() |
+| MiniMax 직접 호출 레거시 | ✅ 유지 | _call_minimax() |
+| NVIDIA MiniMax M2.7 폴백 | ✅ 완료 | _call_nvidia() |
 | 템플릿 최후 폴백 | ✅ 완료 | _fallback_feedback() |
 | 한자·가나 가드레일 3단계 | ✅ 완료 | _has_forbidden(), _scrub_payload() |
 | 기록 localStorage 저장 | ✅ 완료 | leaders.entries.v1, leaders.profile.v1 |

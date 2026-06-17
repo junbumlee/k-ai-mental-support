@@ -16,13 +16,44 @@ def analyze_payload():
     }
 
 
+def deep_diagnosis_payload():
+    return {
+        "diagnosis_type": "stress",
+        "profile": {
+            "company_type": "대기업",
+            "industry": "IT",
+            "age_group": "30대",
+            "org_culture": "수평적",
+            "leader_authority": "인사권 있음",
+        },
+        "entries": [
+            {
+                "createdAt": "2026-06-17T10:00:00.000Z",
+                "category": "성과 압박",
+                "situation": "KPI 보고에서 질문을 받았다",
+                "thought": "내가 리더로 부족하다",
+                "reframe": "질문은 확인일 수도 있다",
+                "feedback": "다음 회의에서 기준을 확인해보세요.",
+            }
+        ],
+        "community_posts": [
+            {
+                "createdAt": "2026-06-17T11:00:00.000Z",
+                "category": "상사·보고",
+                "content": "임원 보고 후 침묵이 계속 마음에 남는다",
+                "comments": ["비슷한 경험이 있어요"],
+            }
+        ],
+    }
+
+
 def test_public_health_and_me_without_session(client):
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json() == {
         "ok": True,
         "auth": {"google_configured": False},
-        "primary": {"configured": False, "model": api_index.MINIMAX_DEFAULT_MODEL},
+        "primary": {"configured": False, "model": api_index.OPENROUTER_DEFAULT_MODEL},
         "fallback": {"configured": False, "model": api_index.NVIDIA_DEFAULT_MODEL},
     }
 
@@ -195,7 +226,7 @@ def test_analyze_crisis_short_circuits_llm(client, complete_profile, monkeypatch
     async def fail_if_called(*args, **kwargs):
         raise AssertionError("LLM provider should not be called for crisis input")
 
-    monkeypatch.setattr(api_index, "_call_minimax", fail_if_called)
+    monkeypatch.setattr(api_index, "_call_openrouter", fail_if_called)
     monkeypatch.setattr(api_index, "_call_nvidia", fail_if_called)
     set_session_cookie(client, profile=complete_profile)
 
@@ -222,7 +253,7 @@ def test_analyze_returns_primary_feedback_without_fallback(client, complete_prof
     async def fail_if_called(*args, **kwargs):
         raise AssertionError("Fallback provider should not be called")
 
-    monkeypatch.setattr(api_index, "_call_minimax", primary)
+    monkeypatch.setattr(api_index, "_call_openrouter", primary)
     monkeypatch.setattr(api_index, "_call_nvidia", fail_if_called)
     set_session_cookie(client, profile=complete_profile)
 
@@ -237,7 +268,7 @@ def test_analyze_returns_template_fallback_when_all_providers_fail(client, compl
     async def unavailable(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(api_index, "_call_minimax", unavailable)
+    monkeypatch.setattr(api_index, "_call_openrouter", unavailable)
     monkeypatch.setattr(api_index, "_call_nvidia", unavailable)
     set_session_cookie(client, profile=complete_profile)
 
@@ -246,6 +277,78 @@ def test_analyze_returns_template_fallback_when_all_providers_fail(client, compl
     assert response.status_code == 200
     assert response.json()["mode"] == "fallback"
     assert "기본 피드백" in response.json()["message"]
+
+
+def test_deep_diagnosis_requires_session_and_activity(client, complete_profile):
+    unauthenticated = client.post("/api/deep-diagnosis", json=deep_diagnosis_payload())
+    assert unauthenticated.status_code == 401
+
+    set_session_cookie(client, profile=complete_profile)
+    empty = client.post(
+        "/api/deep-diagnosis",
+        json={"diagnosis_type": "stress", "entries": [], "community_posts": []},
+    )
+    assert empty.status_code == 400
+    assert "활동" in empty.json()["message"]
+
+
+def test_deep_diagnosis_crisis_short_circuits_llm(client, complete_profile, monkeypatch):
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("LLM provider should not be called for crisis input")
+
+    monkeypatch.setattr(api_index, "_call_openrouter_diagnosis", fail_if_called)
+    monkeypatch.setattr(api_index, "_call_nvidia_diagnosis", fail_if_called)
+    set_session_cookie(client, profile=complete_profile)
+
+    payload = deep_diagnosis_payload()
+    payload["entries"][0]["thought"] = "죽고 싶다는 생각이 들었다"
+    response = client.post("/api/deep-diagnosis", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "crisis"
+
+
+def test_deep_diagnosis_returns_primary_report_without_fallback(client, complete_profile, monkeypatch):
+    async def primary(*args, **kwargs):
+        return api_index.DeepDiagnosisPayload(
+            mode="diagnosis",
+            title="직무 스트레스 리포트",
+            summary="KPI 보고와 임원 보고 장면이 반복됩니다. 책임을 빠르게 개인화하는 흐름이 보입니다. 다음 보고 전 확인 질문을 준비해볼 수 있습니다.",
+            key_patterns=["성과 질문을 능력 평가로 해석합니다", "보고 후 침묵을 오래 붙잡습니다", "책임을 혼자 떠안습니다"],
+            risk_signals=["업무 후에도 긴장이 남습니다", "질문 하나를 전체 평가로 확대합니다", "회복 행동이 부족합니다"],
+            protective_factors=["기록을 남깁니다", "커뮤니티에 공유합니다", "재구성을 시도합니다"],
+            action_plan=["다음 보고 전 기준 질문을 하나 준비합니다", "회의 후 사실과 해석을 나눠 적습니다", "통제 가능한 행동 하나만 고릅니다"],
+            reflection_questions=["무엇을 사실로 확인했나요?", "어떤 해석이 붙었나요?", "무엇을 덜 떠안을 수 있나요?"],
+        )
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("Fallback provider should not be called")
+
+    monkeypatch.setattr(api_index, "_call_openrouter_diagnosis", primary)
+    monkeypatch.setattr(api_index, "_call_nvidia_diagnosis", fail_if_called)
+    set_session_cookie(client, profile=complete_profile)
+
+    response = client.post("/api/deep-diagnosis", json=deep_diagnosis_payload())
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "diagnosis"
+    assert response.json()["title"] == "직무 스트레스 리포트"
+    assert len(response.json()["action_plan"]) == 3
+
+
+def test_deep_diagnosis_returns_template_fallback_when_all_providers_fail(client, complete_profile, monkeypatch):
+    async def unavailable(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(api_index, "_call_openrouter_diagnosis", unavailable)
+    monkeypatch.setattr(api_index, "_call_nvidia_diagnosis", unavailable)
+    set_session_cookie(client, profile=complete_profile)
+
+    response = client.post("/api/deep-diagnosis", json=deep_diagnosis_payload())
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "fallback"
+    assert "기본 리포트" in response.json()["message"]
 
 
 @pytest.mark.parametrize("path", ["/api/leader", "/api/analyze"])
@@ -268,7 +371,7 @@ def test_leader_endpoint_uses_fallback_provider(client, complete_profile, monkey
             question="다음 보고 전 확인 질문 하나를 준비해보세요.",
         )
 
-    monkeypatch.setattr(api_index, "_call_minimax", primary_unavailable)
+    monkeypatch.setattr(api_index, "_call_openrouter", primary_unavailable)
     monkeypatch.setattr(api_index, "_call_nvidia", fallback)
     set_session_cookie(client, profile=complete_profile)
 
@@ -297,7 +400,7 @@ def test_leader_endpoint_requires_session_and_short_circuits_crisis(client, comp
     async def fail_if_called(*args, **kwargs):
         raise AssertionError("LLM provider should not be called for crisis input")
 
-    monkeypatch.setattr(api_index, "_call_minimax", fail_if_called)
+    monkeypatch.setattr(api_index, "_call_openrouter", fail_if_called)
     monkeypatch.setattr(api_index, "_call_nvidia", fail_if_called)
     set_session_cookie(client, profile=complete_profile)
 

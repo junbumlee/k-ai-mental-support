@@ -17,14 +17,14 @@
 - 로그인하지 않은 사용자의 분석 API 접근 차단
 - 프로필 미완성 사용자의 온보딩 강제
 - 자해·자살 신호 감지 시 LLM 호출 없이 위기 안내 반환
-- MiniMax 실패 시 NVIDIA 폴백, 둘 다 실패 시 템플릿 fallback 반환
+- OpenRouter 실패 시 NVIDIA 폴백, 둘 다 실패 시 템플릿 fallback 반환
 - LLM 응답의 JSON 추출 실패나 금지문자 혼입 방어
 
 커버리지는 이 위험 경로가 테스트됐는지 확인하는 지표로 쓰는 것이 좋다. 숫자 자체가 목적이 되면 덜 중요한 줄만 실행하고 핵심 회귀는 놓칠 수 있다.
 
 ### 2. 외부 API는 기본 테스트에서 차단해야 한다
 
-MiniMax, NVIDIA, Google OAuth는 실제 네트워크를 타면 테스트가 느리고 불안정해진다. API key 유무, provider 장애, 응답 포맷 변화에 따라 테스트가 흔들리기 때문이다.
+OpenRouter, MiniMax, NVIDIA, Google OAuth는 실제 네트워크를 타면 테스트가 느리고 불안정해진다. API key 유무, provider 장애, 응답 포맷 변화에 따라 테스트가 흔들리기 때문이다.
 
 이번에는 fake async client와 monkeypatch를 사용해 다음을 검증했다.
 
@@ -70,7 +70,7 @@ MiniMax, NVIDIA, Google OAuth는 실제 네트워크를 타면 테스트가 느�
 
 - 위기 문구가 있으면 `mode=crisis` 반환
 - 핫라인 정보가 포함됨
-- MiniMax/NVIDIA 함수가 호출되면 테스트가 실패하도록 설정
+- OpenRouter/NVIDIA 함수가 호출되면 테스트가 실패하도록 설정
 
 이 테스트는 단순 커버리지 이상의 의미가 있다. 향후 리팩터링 중 실수로 LLM을 먼저 호출하는 구조가 들어오면 바로 잡아낸다.
 
@@ -93,7 +93,7 @@ LLM 기능은 모델 호출보다 후처리와 fallback이 더 자주 장애를 
 현재 남은 주요 공백:
 
 - 실제 Google OAuth 서버와의 end-to-end 통합
-- 실제 MiniMax/NVIDIA 계약 테스트
+- 실제 OpenRouter/MiniMax/NVIDIA 계약 테스트
 - 브라우저 `localStorage`, 탭 전환, STT, 정적 JS 흐름
 - 템플릿 DOM 구조 검증
 

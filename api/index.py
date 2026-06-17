@@ -275,6 +275,42 @@ class FeedbackPayload(BaseModel):
     hotlines: List[dict] = []
 
 
+class DiagnosisEntry(BaseModel):
+    createdAt: Optional[str] = Field(None, max_length=40)
+    category: Optional[str] = Field(None, max_length=30)
+    situation: str = Field("", max_length=1000)
+    thought: str = Field("", max_length=1000)
+    reframe: str = Field("", max_length=1000)
+    feedback: str = Field("", max_length=1200)
+
+
+class DiagnosisCommunityPost(BaseModel):
+    createdAt: Optional[str] = Field(None, max_length=40)
+    category: Optional[str] = Field(None, max_length=30)
+    content: str = Field("", max_length=1200)
+    comments: List[str] = Field(default_factory=list, max_length=5)
+
+
+class DeepDiagnosisRequest(BaseModel):
+    diagnosis_type: Literal["stress", "burnout", "relationship"]
+    profile: UserProfile = Field(default_factory=UserProfile)
+    entries: List[DiagnosisEntry] = Field(default_factory=list, max_length=20)
+    community_posts: List[DiagnosisCommunityPost] = Field(default_factory=list, max_length=20)
+
+
+class DeepDiagnosisPayload(BaseModel):
+    mode: Literal["diagnosis", "fallback"]
+    title: str = ""
+    summary: str = ""
+    key_patterns: List[str] = []
+    risk_signals: List[str] = []
+    protective_factors: List[str] = []
+    action_plan: List[str] = []
+    reflection_questions: List[str] = []
+    message: str = ""
+    disclaimer: str = "이 리포트는 의료적 진단이나 치료가 아니라, 작성 기록을 바탕으로 한 자기이해용 분석입니다."
+
+
 # ---------- LLM 시스템 프롬프트 ----------
 
 SYSTEM_PROMPT = """당신은 'K리더용 걱정인형'입니다. 한국의 리더와 신임 팀장을 돕는 CBT 기반 심리 코치처럼 응답하세요.
@@ -328,6 +364,46 @@ SYSTEM_PROMPT = """당신은 'K리더용 걱정인형'입니다. 한국의 리�
 {"empathy":"...","distortions":["..."],"reframe":"...","question":"..."}"""
 
 
+DEEP_DIAGNOSIS_SYSTEM_PROMPT = """당신은 'K리더용 걱정인형'의 심층 분석 리포트 작성자입니다.
+사용자가 브라우저에 저장한 [쓰기] 상담 기록과 [커뮤니티] 공유 글을 읽고, 한국 직장 리더의 심리 패턴을 분석합니다.
+
+절대 원칙:
+1. 의료 진단명, 병명, 확정적 위험 판정은 쓰지 않습니다.
+2. "우울증", "불안장애", "공황장애", "번아웃 진단"처럼 진단으로 들리는 표현은 금지합니다.
+3. 사용자를 평가하거나 훈계하지 않습니다. 관찰 가능한 패턴과 다음 행동만 제안합니다.
+4. 기록에 없는 사실을 꾸며내지 않습니다. 근거가 약하면 "아직 기록이 적어 조심스럽게 보면"이라고 밝힙니다.
+5. 자해나 자살 신호가 보이면 분석하지 말고 도움 연결만 권해야 합니다.
+
+분석 관점:
+- stress: 성과 압박, 평가, 보고, 통제 가능성과 통제 불가능성의 혼선, 업무 긴장도를 중심으로 봅니다.
+- burnout: 에너지 소진 신호, 회복 여지, 책임 과부하, 반복되는 자기비난을 중심으로 봅니다.
+- relationship: 팀원, 상사, 평가 면담, 갈등, 보고 관계에서의 해석 습관과 대화 패턴을 중심으로 봅니다.
+
+출력 품질:
+- 기록 속 실제 단어를 2개 이상 자연스럽게 재사용합니다. 예: KPI, 회의, 팀원, 보고, 평가, 갈등.
+- summary는 3문장 이상 5문장 이하로 씁니다.
+- key_patterns, risk_signals, protective_factors, action_plan은 각각 3개 이상 5개 이하로 씁니다.
+- reflection_questions는 3개만 씁니다.
+- action_plan은 이번 주 업무 현장에서 실행 가능한 행동이어야 합니다. 관찰 대상, 시점, 행동이 보여야 합니다.
+- risk_signals는 겁주는 표현이 아니라 "주의해서 볼 신호"로 씁니다.
+
+출력 규칙:
+- JSON 하나만 출력합니다.
+- 코드펜스, 설명, 주석은 금지합니다.
+- 한자, 일본어, 아랍어 문자는 절대 쓰지 않습니다. 한국어 문장 안의 자연스러운 영문 약어(KPI, OKR, 1on1 등)는 허용합니다.
+
+형식:
+{
+  "title": "...",
+  "summary": "...",
+  "key_patterns": ["...", "...", "..."],
+  "risk_signals": ["...", "...", "..."],
+  "protective_factors": ["...", "...", "..."],
+  "action_plan": ["...", "...", "..."],
+  "reflection_questions": ["...", "...", "..."]
+}"""
+
+
 # ---------- 유틸 ----------
 
 def _fallback_feedback() -> FeedbackPayload:
@@ -342,13 +418,72 @@ def _fallback_feedback() -> FeedbackPayload:
     )
 
 
+DIAGNOSIS_LABELS = {
+    "stress": "직무 스트레스 진단",
+    "burnout": "번아웃 위험도",
+    "relationship": "리더 관계 스트레스",
+}
+
+
+def _fallback_deep_diagnosis(payload: DeepDiagnosisRequest) -> DeepDiagnosisPayload:
+    label = DIAGNOSIS_LABELS.get(payload.diagnosis_type, "심층 진단")
+    categories: Dict[str, int] = {}
+    for entry in payload.entries:
+        if entry.category:
+            categories[entry.category] = categories.get(entry.category, 0) + 1
+    for post in payload.community_posts:
+        if post.category:
+            categories[post.category] = categories.get(post.category, 0) + 1
+    top_category = max(categories.items(), key=lambda item: item[1])[0] if categories else "최근 업무 장면"
+    return DeepDiagnosisPayload(
+        mode="fallback",
+        title=f"{label} 리포트",
+        summary=(
+            f"현재 인공지능 분석 응답이 불안정해 기본 리포트를 보여드립니다. "
+            f"최근 기록에서는 '{top_category}' 맥락이 반복적으로 나타납니다. "
+            "같은 주제가 이어질수록 사실, 해석, 다음 행동을 분리해 보는 것이 도움이 됩니다."
+        ),
+        key_patterns=[
+            f"'{top_category}' 관련 장면이 기록과 커뮤니티 활동에 반복해서 등장합니다.",
+            "업무 상황을 리더 개인의 책임으로 빠르게 연결하는 흐름이 있을 수 있습니다.",
+            "상담 기록과 공개적으로 나눈 고민이 함께 쌓이면서 반복 맥락을 더 선명하게 볼 수 있습니다.",
+        ],
+        risk_signals=[
+            "같은 장면을 반복해서 떠올리며 업무 후에도 긴장이 쉽게 풀리지 않는지 살펴보세요.",
+            "한 번의 보고, 평가, 대화를 전체 리더십 평가로 확대하고 있는지 확인해보세요.",
+            "휴식보다 보완 행동만 계속 늘어나는 흐름이 있는지 주의해서 보세요.",
+        ],
+        protective_factors=[
+            "기록을 남기고 있다는 점은 감정과 사실을 분리해 볼 수 있는 좋은 기반입니다.",
+            "커뮤니티에 고민을 공유했다면 혼자 결론 내리지 않는 통로가 이미 생긴 상태입니다.",
+            "카테고리별로 고민을 나누면 막연한 불안보다 구체적인 업무 장면을 다루기 쉬워집니다.",
+        ],
+        action_plan=[
+            "이번 주 가장 자주 등장한 장면 하나를 골라, 사실과 해석을 각각 한 줄씩 분리해 적어보세요.",
+            "다음 회의나 보고 전, 내가 통제할 수 있는 준비 행동 1개와 통제할 수 없는 반응 1개를 나눠보세요.",
+            "긴장이 커지는 대화 뒤에는 바로 결론을 내리지 말고, 확인된 발언과 내 추측을 따로 기록해보세요.",
+        ],
+        reflection_questions=[
+            "최근 기록에서 내가 가장 빨리 책임으로 받아들이는 장면은 무엇인가요?",
+            "상대의 실제 발언과 내가 해석한 의미 사이에 차이가 있었던 순간은 언제였나요?",
+            "이번 주에 하나만 덜 떠안는다면 어떤 업무나 감정 부담을 내려놓을 수 있을까요?",
+        ],
+        message="지금은 기본 리포트를 보여드리고 있어요. 잠시 후 다시 시도하면 더 개인화된 분석을 받을 수 있습니다.",
+    )
+
+
 MINIMAX_DEFAULT_BASE_URL = "https://api.minimaxi.chat/v1"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M2.7"
 
+OPENROUTER_DEFAULT_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_DEFAULT_MODEL = "minimax/minimax-m2.7"
+OPENROUTER_DEFAULT_REASONING_EFFORT = "minimal"
+
 NVIDIA_DEFAULT_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NVIDIA_DEFAULT_MODEL = "moonshotai/kimi-k2.5"
+NVIDIA_DEFAULT_MODEL = "minimaxai/minimax-m2.7"
 LLM_MAX_TOKENS = 2048
-# Vercel Hobby 플랜 maxDuration 300s 한도 내에서: MiniMax 180 + NVIDIA 100 = 280s.
+DEEP_DIAGNOSIS_MAX_TOKENS = 3072
+# Vercel Hobby 플랜 maxDuration 300s 한도 내에서: OpenRouter 180 + NVIDIA 100 = 280s.
 # NVIDIA는 평소 10~30s에 응답하므로 100s면 충분한 안전 마진.
 PRIMARY_TIMEOUT_SECONDS = 180
 FALLBACK_TIMEOUT_SECONDS = 100
@@ -403,6 +538,39 @@ def _scrub_payload(p: FeedbackPayload) -> FeedbackPayload:
     )
 
 
+def _diagnosis_text_parts(p: DeepDiagnosisPayload) -> List[str]:
+    return [
+        p.title,
+        p.summary,
+        *p.key_patterns,
+        *p.risk_signals,
+        *p.protective_factors,
+        *p.action_plan,
+        *p.reflection_questions,
+        p.message,
+        p.disclaimer,
+    ]
+
+
+def _has_forbidden_diagnosis(payload: DeepDiagnosisPayload) -> bool:
+    return bool(_FORBIDDEN_RE.search(" ".join(_diagnosis_text_parts(payload))))
+
+
+def _scrub_diagnosis_payload(p: DeepDiagnosisPayload) -> DeepDiagnosisPayload:
+    return DeepDiagnosisPayload(
+        mode=p.mode,
+        title=_scrub_forbidden(p.title),
+        summary=_scrub_forbidden(p.summary),
+        key_patterns=[_scrub_forbidden(item) for item in p.key_patterns],
+        risk_signals=[_scrub_forbidden(item) for item in p.risk_signals],
+        protective_factors=[_scrub_forbidden(item) for item in p.protective_factors],
+        action_plan=[_scrub_forbidden(item) for item in p.action_plan],
+        reflection_questions=[_scrub_forbidden(item) for item in p.reflection_questions],
+        message=_scrub_forbidden(p.message),
+        disclaimer=_scrub_forbidden(p.disclaimer),
+    )
+
+
 def _format_profile_context(entry) -> str:
     pairs = [
         ("직무/연차", getattr(entry, "job_role", None)),
@@ -438,6 +606,55 @@ def _build_user_block(entry: DiaryEntry) -> str:
     )
 
 
+def _deep_diagnosis_text(payload: DeepDiagnosisRequest) -> str:
+    parts: List[str] = []
+    for entry in payload.entries:
+        parts.extend([entry.situation, entry.thought, entry.reframe, entry.feedback])
+    for post in payload.community_posts:
+        parts.append(post.content)
+        parts.extend(post.comments)
+    return "\n".join(part for part in parts if part)
+
+
+def _build_deep_diagnosis_user_block(payload: DeepDiagnosisRequest, profile: UserProfile) -> str:
+    label = DIAGNOSIS_LABELS.get(payload.diagnosis_type, payload.diagnosis_type)
+    entry_lines = []
+    for idx, entry in enumerate(payload.entries[:20], start=1):
+        entry_lines.append(
+            "\n".join(
+                [
+                    f"{idx}. 날짜: {entry.createdAt or '미상'}",
+                    f"   분류: {entry.category or '미분류'}",
+                    f"   상황: {entry.situation or '(없음)'}",
+                    f"   자동 생각: {entry.thought or '(없음)'}",
+                    f"   재구성: {entry.reframe or '(없음)'}",
+                    f"   기존 피드백: {entry.feedback or '(없음)'}",
+                ]
+            )
+        )
+
+    post_lines = []
+    for idx, post in enumerate(payload.community_posts[:20], start=1):
+        comments = " / ".join(comment for comment in post.comments[:5] if comment) or "(댓글 없음)"
+        post_lines.append(
+            "\n".join(
+                [
+                    f"{idx}. 날짜: {post.createdAt or '미상'}",
+                    f"   분류: {post.category or '미분류'}",
+                    f"   글: {post.content or '(없음)'}",
+                    f"   댓글: {comments}",
+                ]
+            )
+        )
+
+    return (
+        f"[진단 종류]\n{label} ({payload.diagnosis_type})\n\n"
+        f"[사용자 정보]\n{_format_profile_context(profile)}\n\n"
+        f"[쓰기 상담 기록]\n{chr(10).join(entry_lines) if entry_lines else '(기록 없음)'}\n\n"
+        f"[커뮤니티 활동]\n{chr(10).join(post_lines) if post_lines else '(활동 없음)'}"
+    )
+
+
 def _parse_feedback_json(content: str) -> FeedbackPayload:
     data = json.loads(_extract_json(content))
     return FeedbackPayload(
@@ -447,6 +664,37 @@ def _parse_feedback_json(content: str) -> FeedbackPayload:
         reframe=_normalize_text(data.get("reframe", "")),
         question=_normalize_text(data.get("question", "")),
     )
+
+
+def _normalize_json_list(value: Any, limit: int = 5) -> List[str]:
+    if value is None:
+        return []
+    raw_items = value if isinstance(value, list) else [value]
+    items = []
+    for item in raw_items:
+        text = _normalize_text(str(item or "")).strip()
+        if text:
+            items.append(text[:500])
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _parse_diagnosis_json(content: str) -> DeepDiagnosisPayload:
+    data = json.loads(_extract_json(content))
+    payload = DeepDiagnosisPayload(
+        mode="diagnosis",
+        title=_normalize_text(str(data.get("title") or "심층 분석 리포트")).strip()[:120],
+        summary=_normalize_text(str(data.get("summary") or "")).strip()[:1400],
+        key_patterns=_normalize_json_list(data.get("key_patterns")),
+        risk_signals=_normalize_json_list(data.get("risk_signals")),
+        protective_factors=_normalize_json_list(data.get("protective_factors")),
+        action_plan=_normalize_json_list(data.get("action_plan")),
+        reflection_questions=_normalize_json_list(data.get("reflection_questions"), limit=3),
+    )
+    if not payload.summary:
+        raise ValueError("diagnosis summary is empty")
+    return payload
 
 
 async def _call_minimax_model(
@@ -518,15 +766,79 @@ async def _call_minimax_model(
 
 
 async def _call_minimax(system_prompt: str, user_block: str) -> Optional[FeedbackPayload]:
-    """MiniMax 1차 시도. 실패 시 None 반환 → 상위에서 NVIDIA 폴백."""
+    """레거시 MiniMax 직접 호출. 실패 시 None 반환."""
     model = os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL)
     return await _call_minimax_model(
         system_prompt, user_block, model, PRIMARY_TIMEOUT_SECONDS
     )
 
 
+async def _call_openrouter(system_prompt: str, user_block: str) -> Optional[FeedbackPayload]:
+    """OpenRouter MiniMax M2.7 1차 provider. OpenAI 호환 엔드포인트."""
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        logger.warning("OpenRouter skip: OPENROUTER_API_KEY is not configured")
+        return None
+
+    url = os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_DEFAULT_URL).strip()
+    model = os.environ.get("OPENROUTER_MODEL", OPENROUTER_DEFAULT_MODEL)
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_block},
+        ],
+        "max_tokens": LLM_MAX_TOKENS,
+        "temperature": 0.2,
+        "top_p": 0.9,
+    }
+    reasoning_effort = os.environ.get(
+        "OPENROUTER_REASONING_EFFORT", OPENROUTER_DEFAULT_REASONING_EFFORT
+    ).strip()
+    if reasoning_effort:
+        payload["reasoning"] = {"effort": reasoning_effort, "exclude": True}
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": os.environ.get("OPENROUTER_APP_NAME", "K AI Mental Support"),
+    }
+    referer = os.environ.get("OPENROUTER_SITE_URL")
+    if referer:
+        headers["HTTP-Referer"] = referer
+
+    try:
+        started_at = time.perf_counter()
+        async with httpx.AsyncClient(timeout=PRIMARY_TIMEOUT_SECONDS) as client:
+            response = await client.post(url, headers=headers, json=payload)
+        elapsed = time.perf_counter() - started_at
+        logger.info("OpenRouter model=%s responded in %.2fs", model, elapsed)
+        response.raise_for_status()
+        body = response.json()
+        choices = body.get("choices") or []
+        if not choices:
+            logger.warning("OpenRouter fallback: empty choices in response")
+            return None
+        raw_content = choices[0].get("message", {}).get("content", "")
+        if isinstance(raw_content, list):
+            content = "\n".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in raw_content
+            )
+        else:
+            content = str(raw_content or "")
+        result = _parse_feedback_json(content)
+        if _has_forbidden(result):
+            logger.info("OpenRouter model=%s response contained forbidden characters; scrubbing", model)
+            result = _scrub_payload(result)
+        return result
+    except Exception:
+        logger.exception("OpenRouter model=%s call failed: %r", model, user_block[:120])
+        return None
+
+
 async def _call_nvidia(system_prompt: str, user_block: str) -> Optional[FeedbackPayload]:
-    """NVIDIA(moonshotai/kimi-k2.5) 2차 폴백. OpenAI 호환 엔드포인트."""
+    """NVIDIA MiniMax M2.7 2차 폴백. OpenAI 호환 엔드포인트."""
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
         logger.warning("NVIDIA skip: NVIDIA_API_KEY is not configured")
@@ -571,6 +883,128 @@ async def _call_nvidia(system_prompt: str, user_block: str) -> Optional[Feedback
         return result
     except Exception:
         logger.exception("NVIDIA call failed: %r", user_block[:120])
+        return None
+
+
+async def _call_openrouter_diagnosis(
+    system_prompt: str, user_block: str
+) -> Optional[DeepDiagnosisPayload]:
+    """OpenRouter 기반 심층 진단 리포트 생성."""
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        logger.warning("OpenRouter diagnosis skip: OPENROUTER_API_KEY is not configured")
+        return None
+
+    url = os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_DEFAULT_URL).strip()
+    model = os.environ.get("OPENROUTER_MODEL", OPENROUTER_DEFAULT_MODEL)
+    payload: Dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_block},
+        ],
+        "max_tokens": DEEP_DIAGNOSIS_MAX_TOKENS,
+        "temperature": 0.2,
+        "top_p": 0.9,
+    }
+    reasoning_effort = os.environ.get(
+        "OPENROUTER_REASONING_EFFORT", OPENROUTER_DEFAULT_REASONING_EFFORT
+    ).strip()
+    if reasoning_effort:
+        payload["reasoning"] = {"effort": reasoning_effort, "exclude": True}
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": os.environ.get("OPENROUTER_APP_NAME", "K AI Mental Support"),
+    }
+    referer = os.environ.get("OPENROUTER_SITE_URL")
+    if referer:
+        headers["HTTP-Referer"] = referer
+
+    try:
+        started_at = time.perf_counter()
+        async with httpx.AsyncClient(timeout=PRIMARY_TIMEOUT_SECONDS) as client:
+            response = await client.post(url, headers=headers, json=payload)
+        elapsed = time.perf_counter() - started_at
+        logger.info("OpenRouter diagnosis model=%s responded in %.2fs", model, elapsed)
+        response.raise_for_status()
+        body = response.json()
+        choices = body.get("choices") or []
+        if not choices:
+            logger.warning("OpenRouter diagnosis fallback: empty choices in response")
+            return None
+        raw_content = choices[0].get("message", {}).get("content", "")
+        if isinstance(raw_content, list):
+            content = "\n".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in raw_content
+            )
+        else:
+            content = str(raw_content or "")
+        result = _parse_diagnosis_json(content)
+        if _has_forbidden_diagnosis(result):
+            logger.info("OpenRouter diagnosis response contained forbidden characters; scrubbing")
+            result = _scrub_diagnosis_payload(result)
+        return result
+    except Exception:
+        logger.exception("OpenRouter diagnosis call failed: %r", user_block[:120])
+        return None
+
+
+async def _call_nvidia_diagnosis(
+    system_prompt: str, user_block: str
+) -> Optional[DeepDiagnosisPayload]:
+    """NVIDIA 기반 심층 진단 리포트 폴백."""
+    api_key = os.environ.get("NVIDIA_API_KEY")
+    if not api_key:
+        logger.warning("NVIDIA diagnosis skip: NVIDIA_API_KEY is not configured")
+        return None
+
+    url = os.environ.get("NVIDIA_BASE_URL", NVIDIA_DEFAULT_URL).strip()
+    model = os.environ.get("NVIDIA_BASE_MODEL", NVIDIA_DEFAULT_MODEL)
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_block},
+        ],
+        "max_tokens": DEEP_DIAGNOSIS_MAX_TOKENS,
+        "temperature": 0.2,
+        "top_p": 0.9,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        started_at = time.perf_counter()
+        async with httpx.AsyncClient(timeout=FALLBACK_TIMEOUT_SECONDS) as client:
+            response = await client.post(url, headers=headers, json=payload)
+        elapsed = time.perf_counter() - started_at
+        logger.info("NVIDIA diagnosis responded in %.2fs", elapsed)
+        response.raise_for_status()
+        body = response.json()
+        choices = body.get("choices") or []
+        if not choices:
+            logger.warning("NVIDIA diagnosis fallback: empty choices in response")
+            return None
+        raw_content = choices[0].get("message", {}).get("content", "")
+        if isinstance(raw_content, list):
+            content = "\n".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in raw_content
+            )
+        else:
+            content = str(raw_content or "")
+        result = _parse_diagnosis_json(content)
+        if _has_forbidden_diagnosis(result):
+            logger.info("NVIDIA diagnosis response contained forbidden characters; scrubbing")
+            result = _scrub_diagnosis_payload(result)
+        return result
+    except Exception:
+        logger.exception("NVIDIA diagnosis call failed: %r", user_block[:120])
         return None
 
 
@@ -791,8 +1225,8 @@ async def health() -> dict:
             "google_configured": _oauth_configured(),
         },
         "primary": {
-            "configured": bool(os.environ.get("MINIMAX_API_KEY")),
-            "model": os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL),
+            "configured": bool(os.environ.get("OPENROUTER_API_KEY")),
+            "model": os.environ.get("OPENROUTER_MODEL", OPENROUTER_DEFAULT_MODEL),
         },
         "fallback": {
             "configured": bool(os.environ.get("NVIDIA_API_KEY")),
@@ -810,14 +1244,43 @@ async def analyze(entry: DiaryEntry, request: Request) -> JSONResponse:
         return JSONResponse(CRISIS_RESPONSE)
 
     user_block = _build_user_block(entry)
-    # 1차: MiniMax → 2차: NVIDIA kimi → 최후: 템플릿
-    result = await _call_minimax(SYSTEM_PROMPT, user_block)
+    # 1차: OpenRouter MiniMax M2.7 → 2차: NVIDIA MiniMax M2.7 → 최후: 템플릿
+    result = await _call_openrouter(SYSTEM_PROMPT, user_block)
     if result is None:
         logger.info("Primary provider failed; trying NVIDIA fallback")
         result = await _call_nvidia(SYSTEM_PROMPT, user_block)
     if result is None:
         logger.info("All providers failed; returning template fallback")
         result = _fallback_feedback()
+    return JSONResponse(result.model_dump())
+
+
+@app.post("/api/deep-diagnosis")
+async def deep_diagnosis(payload: DeepDiagnosisRequest, request: Request) -> JSONResponse:
+    session = _get_session(request)
+    if not session:
+        return JSONResponse({"message": "로그인이 필요합니다."}, status_code=401)
+    if not payload.entries and not payload.community_posts:
+        return JSONResponse(
+            {"message": "심층 진단을 만들 상담 기록이나 커뮤니티 활동이 아직 없어요."},
+            status_code=400,
+        )
+
+    if _contains_crisis(_deep_diagnosis_text(payload)):
+        return JSONResponse(CRISIS_RESPONSE)
+
+    session_profile = session.get("profile") if isinstance(session.get("profile"), dict) else {}
+    client_profile = payload.profile.model_dump(exclude_none=True)
+    profile = UserProfile(**{**client_profile, **session_profile})
+    user_block = _build_deep_diagnosis_user_block(payload, profile)
+
+    result = await _call_openrouter_diagnosis(DEEP_DIAGNOSIS_SYSTEM_PROMPT, user_block)
+    if result is None:
+        logger.info("Deep diagnosis: primary provider failed; trying NVIDIA fallback")
+        result = await _call_nvidia_diagnosis(DEEP_DIAGNOSIS_SYSTEM_PROMPT, user_block)
+    if result is None:
+        logger.info("Deep diagnosis: all providers failed; returning template fallback")
+        result = _fallback_deep_diagnosis(payload)
     return JSONResponse(result.model_dump())
 
 
@@ -910,7 +1373,7 @@ async def leader_analyze(entry: LeaderEntry, request: Request) -> JSONResponse:
         return JSONResponse(CRISIS_RESPONSE)
 
     user_block = _build_leader_user_block(entry)
-    result = await _call_minimax(LEADER_SYSTEM_PROMPT, user_block)
+    result = await _call_openrouter(LEADER_SYSTEM_PROMPT, user_block)
     if result is None:
         logger.info("Leader: primary provider failed; trying NVIDIA fallback")
         result = await _call_nvidia(LEADER_SYSTEM_PROMPT, user_block)

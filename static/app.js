@@ -216,9 +216,7 @@ if (communitySearchEl) {
 }
 
 document.querySelectorAll(".diagnosis-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    toast("심층 진단 도구 연결은 준비 중이에요");
-  });
+  btn.addEventListener("click", () => requestDeepDiagnosis(btn));
 });
 
 /* ───── STT ───── */
@@ -871,6 +869,143 @@ function getReportInsights(data) {
     insights.push("활동이 더 쌓이면 반복 주제와 최근 신호를 자동으로 정리합니다.");
   }
   return insights;
+}
+
+async function requestDeepDiagnosis(button) {
+  const payload = buildDiagnosisPayload(button.dataset.diagnosis);
+  if (!payload.entries.length && !payload.community_posts.length) {
+    toast("심층 진단을 만들 활동 기록이 아직 없어요");
+    return;
+  }
+
+  const buttons = Array.from(document.querySelectorAll(".diagnosis-btn"));
+  const original = button.textContent;
+  buttons.forEach((btn) => { btn.disabled = true; });
+  const stopProgress = startProgressLabel(button, "심층 리포트를 만들고 있어요");
+
+  try {
+    const res = await fetch("/api/deep-diagnosis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok) {
+      toast(data.message || "심층 진단을 만들지 못했어요");
+      return;
+    }
+    renderDiagnosisResult(data);
+  } catch {
+    toast("연결이 불안정해요. 다시 시도해주세요");
+  } finally {
+    stopProgress();
+    buttons.forEach((btn) => { btn.disabled = false; });
+    button.textContent = original;
+  }
+}
+
+function buildDiagnosisPayload(diagnosisType) {
+  return {
+    diagnosis_type: diagnosisType || "stress",
+    profile: state.profile || {},
+    entries: state.entries.slice(0, 20).map((record) => {
+      const entry = record.entry || {};
+      const feedback = record.feedback || {};
+      return {
+        createdAt: record.createdAt || "",
+        category: entry.category || "",
+        situation: truncateText(entry.situation || "", 1000),
+        thought: truncateText(entry.thought || "", 1000),
+        reframe: truncateText(entry.reframe || "", 1000),
+        feedback: truncateText(
+          [feedback.empathy, feedback.reframe, feedback.question].filter(Boolean).join(" "),
+          1200
+        ),
+      };
+    }),
+    community_posts: state.communityPosts.slice(0, 20).map((post) => ({
+      createdAt: post.createdAt || "",
+      category: post.category || "",
+      content: truncateText(post.content || "", 1200),
+      comments: (post.comments || [])
+        .slice(0, 5)
+        .map((comment) => truncateText(comment.text || "", 300))
+        .filter(Boolean),
+    })),
+  };
+}
+
+function renderDiagnosisResult(data) {
+  const container = document.getElementById("diagnosis-result");
+  if (!container) return;
+  container.innerHTML = "";
+  container.classList.remove("hidden");
+
+  if (data.mode === "crisis") {
+    const title = document.createElement("h3");
+    title.textContent = "혼자 감당하지 마세요";
+    const message = document.createElement("p");
+    message.textContent = data.message || "전문 상담사와 연결되시길 권해드려요.";
+    container.append(title, message);
+    if (Array.isArray(data.hotlines) && data.hotlines.length) {
+      const list = document.createElement("ul");
+      list.className = "hotlines";
+      data.hotlines.forEach((hotline) => {
+        const item = document.createElement("li");
+        item.textContent = `${hotline.name} ${hotline.number}`;
+        list.appendChild(item);
+      });
+      container.appendChild(list);
+    }
+    return;
+  }
+
+  if (data.mode === "fallback" && data.message) {
+    const notice = document.createElement("div");
+    notice.className = "feedback-fallback";
+    notice.textContent = data.message;
+    container.appendChild(notice);
+  }
+
+  const title = document.createElement("h3");
+  title.textContent = data.title || "심층 분석 리포트";
+  const summary = document.createElement("p");
+  summary.className = "diagnosis-summary";
+  summary.textContent = data.summary || "아직 분석할 수 있는 내용이 충분하지 않아요.";
+  container.append(title, summary);
+
+  appendDiagnosisSection(container, "반복 패턴", data.key_patterns);
+  appendDiagnosisSection(container, "주의해서 볼 신호", data.risk_signals);
+  appendDiagnosisSection(container, "이미 있는 보호 요인", data.protective_factors);
+  appendDiagnosisSection(container, "이번 주 실행 계획", data.action_plan);
+  appendDiagnosisSection(container, "스스로에게 물어볼 질문", data.reflection_questions);
+
+  if (data.disclaimer) {
+    const disclaimer = document.createElement("p");
+    disclaimer.className = "diagnosis-disclaimer";
+    disclaimer.textContent = data.disclaimer;
+    container.appendChild(disclaimer);
+  }
+}
+
+function appendDiagnosisSection(container, title, items) {
+  if (!Array.isArray(items) || !items.length) return;
+  const section = document.createElement("section");
+  section.className = "diagnosis-section";
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  const list = document.createElement("ul");
+  items.forEach((text) => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    list.appendChild(item);
+  });
+  section.append(heading, list);
+  container.appendChild(section);
 }
 
 /* ───── Helpers ───── */
