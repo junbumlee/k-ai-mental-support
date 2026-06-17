@@ -799,6 +799,13 @@ textarea:focus, input[type="text"]:focus, input[type="search"]:focus, select:foc
   color: var(--muted);
   font-size: 12px;
 }
+.account-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 12px;
+}
 .logout-link {
   flex: 0 0 auto;
   color: var(--accent-strong);

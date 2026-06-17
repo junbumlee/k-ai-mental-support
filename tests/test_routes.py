@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs, urlparse
+import re
 
 import pytest
 
@@ -115,6 +116,18 @@ def test_login_page_redirects_authenticated_users(client, complete_profile):
     assert complete.headers["location"] == "/leaders"
 
 
+def test_login_switch_clears_existing_session_and_shows_login(client, complete_profile, monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "client-secret")
+    set_session_cookie(client, profile=complete_profile)
+
+    response = client.get("/login?next=/leaders&switch=1")
+
+    assert response.status_code == 200
+    assert "Google로 계속하기" in response.text
+    assert api_index.SESSION_COOKIE in response.headers["set-cookie"]
+
+
 def test_google_start_requires_config_and_sanitizes_next(client, monkeypatch):
     not_configured = client.get("/auth/google/start?next=/leaders")
     assert not_configured.status_code == 303
@@ -134,6 +147,22 @@ def test_google_start_requires_config_and_sanitizes_next(client, monkeypatch):
     assert api_index.OAUTH_STATE_COOKIE in configured.headers["set-cookie"]
 
 
+def test_google_start_switch_clears_existing_session(client, complete_profile, monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "client-id")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "client-secret")
+    set_session_cookie(client, profile=complete_profile)
+
+    response = client.get("/auth/google/start?next=/leaders&switch=1")
+
+    assert response.status_code == 303
+    parsed = urlparse(response.headers["location"])
+    params = parse_qs(parsed.query)
+    assert parsed.netloc == "accounts.google.com"
+    assert params["prompt"] == ["select_account"]
+    assert api_index.OAUTH_STATE_COOKIE in response.headers["set-cookie"]
+    assert api_index.SESSION_COOKIE in response.headers["set-cookie"]
+
+
 def test_google_callback_rejects_invalid_state(client, monkeypatch):
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "client-id")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "client-secret")
@@ -144,7 +173,7 @@ def test_google_callback_rejects_invalid_state(client, monkeypatch):
     assert response.headers["location"] == "/login?error=invalid_state"
 
 
-def test_google_callback_sets_session_on_verified_token(client, monkeypatch):
+def test_google_callback_sets_session_on_verified_token(client, complete_profile, monkeypatch):
     class FakeResponse:
         def __init__(self, body):
             self.body = body
@@ -187,6 +216,7 @@ def test_google_callback_sets_session_on_verified_token(client, monkeypatch):
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "client-id")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "client-secret")
     monkeypatch.setattr(api_index.httpx, "AsyncClient", FakeAsyncClient)
+    set_session_cookie(client, profile=complete_profile)
     client.cookies.set(
         api_index.OAUTH_STATE_COOKIE,
         api_index._encode_signed({"state": "state-1", "next": "/leaders"}),
@@ -198,6 +228,14 @@ def test_google_callback_sets_session_on_verified_token(client, monkeypatch):
     assert response.headers["location"] == "/onboarding?next=/leaders"
     assert api_index.OAUTH_STATE_COOKIE in response.headers["set-cookie"]
     assert api_index.SESSION_COOKIE in response.headers["set-cookie"]
+    cookie_match = re.search(
+        rf"{api_index.SESSION_COOKIE}=([^;]+)",
+        response.headers["set-cookie"],
+    )
+    assert cookie_match
+    session = api_index._decode_signed(cookie_match.group(1))
+    assert session["user"]["name"] == "Leader"
+    assert session["profile"] == {}
 
 
 def test_profile_api_requires_session_and_required_fields(client, complete_profile):

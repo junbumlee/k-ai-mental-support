@@ -123,6 +123,10 @@ def _safe_next(value: Optional[str], default: str = "/") -> str:
     return value
 
 
+def _wants_account_switch(request: Request) -> bool:
+    return request.query_params.get("switch", "").strip().lower() in {"1", "true", "yes"}
+
+
 def _oauth_configured() -> bool:
     return bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
 
@@ -1056,10 +1060,11 @@ def _contains_crisis(text: str) -> bool:
 async def login_page(request: Request) -> HTMLResponse:
     next_path = _safe_next(request.query_params.get("next"))
     session = _get_session(request)
-    if session:
+    switching_account = _wants_account_switch(request)
+    if session and not switching_account:
         destination = next_path if _profile_complete(session.get("profile")) else f"/onboarding?next={next_path}"
         return RedirectResponse(destination, status_code=303)
-    return TEMPLATES.TemplateResponse(
+    response = TEMPLATES.TemplateResponse(
         "login.html",
         {
             "request": request,
@@ -1068,6 +1073,9 @@ async def login_page(request: Request) -> HTMLResponse:
             "error": request.query_params.get("error"),
         },
     )
+    if switching_account:
+        _clear_cookie(response, SESSION_COOKIE)
+    return response
 
 
 @app.get("/onboarding", response_class=HTMLResponse)
@@ -1103,6 +1111,8 @@ async def google_start(request: Request):
         "prompt": "select_account",
     }
     response = RedirectResponse(f"{GOOGLE_AUTH_URL}?{urlencode(params)}", status_code=303)
+    if _wants_account_switch(request):
+        _clear_cookie(response, SESSION_COOKIE)
     _set_signed_cookie(request, response, OAUTH_STATE_COOKIE, state_payload, 600)
     return response
 
