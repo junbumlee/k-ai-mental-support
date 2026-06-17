@@ -23,6 +23,8 @@
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="write" role="tab">쓰기</button>
       <button class="tab" data-tab="list" role="tab">기록</button>
+      <button class="tab" data-tab="community" role="tab">커뮤니티</button>
+      <button class="tab" data-tab="report" role="tab">리포트</button>
       <button class="tab" data-tab="settings" role="tab">설정</button>
     </nav>
 
@@ -88,6 +90,58 @@
         <p id="empty-state" class="empty">아직 기록된 걱정이 없어요. 첫 기록을 시작해볼까요?</p>
       </section>
 
+      <!-- 커뮤니티 -->
+      <section class="panel" data-panel="community">
+        <form id="community-form" class="card community-composer">
+          <div class="field category-field">
+            <label>
+              <span class="q-index">·</span>
+              고민 분류
+            </label>
+            <div id="community-category-row" class="category-row" role="radiogroup" aria-label="커뮤니티 고민 분류"></div>
+          </div>
+
+          <div class="field">
+            <label for="community-content">함께 나누고 싶은 고민</label>
+            <div class="input-row">
+              <textarea id="community-content" rows="4" placeholder="예: 팀원 평가 피드백을 어떻게 꺼내야 할지 고민돼요" required></textarea>
+              <button type="button" class="stt-btn" data-target="community-content" title="음성 입력" aria-label="음성 입력">🎙️</button>
+            </div>
+          </div>
+
+          <button type="submit" class="primary-btn">커뮤니티에 올리기</button>
+        </form>
+
+        <div class="search-shell">
+          <label class="visually-hidden" for="community-search">커뮤니티 검색</label>
+          <input id="community-search" type="search" placeholder="검색어를 입력하세요" autocomplete="off" />
+        </div>
+
+        <div id="community-feed" class="community-feed"></div>
+        <p id="community-empty-state" class="empty">아직 커뮤니티 글이 없어요.</p>
+      </section>
+
+      <!-- 리포트 -->
+      <section class="panel" data-panel="report">
+        <div id="report-summary" class="report-summary"></div>
+
+        <div class="card diagnosis-card">
+          <h2>심층 진단</h2>
+          <p class="muted">더 자세한 진단은 유료 도구로 연결될 예정입니다.</p>
+          <div class="diagnosis-actions">
+            <button type="button" class="ghost-btn diagnosis-btn" data-diagnosis="stress">직무 스트레스 진단</button>
+            <button type="button" class="ghost-btn diagnosis-btn" data-diagnosis="burnout">번아웃 위험도</button>
+            <button type="button" class="ghost-btn diagnosis-btn" data-diagnosis="relationship">리더 관계 스트레스</button>
+          </div>
+        </div>
+
+        <div class="report-feed-header">
+          <h2>내 활동</h2>
+        </div>
+        <div id="report-feed" class="report-feed"></div>
+        <p id="report-empty-state" class="empty">아직 리포트에 담을 활동이 없어요.</p>
+      </section>
+
       <!-- 설정 -->
       <section class="panel" data-panel="settings">
         <div class="card">
@@ -108,6 +162,7 @@
             <select id="company-type" required>
               <option value="">선택해주세요</option>
               <option>대기업</option>
+              <option>중소기업</option>
               <option>중견기업</option>
               <option>스타트업</option>
               <option>공공</option>
@@ -218,6 +273,43 @@
       </div>
       <footer class="entry-feedback"></footer>
     </article>
+  </template>
+
+  <template id="community-post-template">
+    <article class="community-card">
+      <header class="community-header">
+        <div class="community-author-block">
+          <span class="author-avatar" aria-hidden="true">익</span>
+          <div>
+            <strong class="community-author"></strong>
+            <div class="community-meta">
+              <time></time>
+              <span class="community-category"></span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="delete-btn delete-post-btn" aria-label="글 삭제">×</button>
+      </header>
+      <p class="community-content"></p>
+      <div class="comment-list"></div>
+      <form class="comment-form">
+        <div class="input-row">
+          <textarea class="comment-input" rows="1" placeholder="댓글 달기"></textarea>
+          <button type="button" class="stt-btn comment-stt-btn" title="음성 입력" aria-label="음성 입력">🎙️</button>
+        </div>
+        <button type="submit" class="ghost-btn compact-btn">댓글</button>
+      </form>
+    </article>
+  </template>
+
+  <template id="comment-template">
+    <div class="comment-item">
+      <div class="comment-meta">
+        <strong class="comment-author"></strong>
+        <time></time>
+      </div>
+      <p></p>
+    </div>
   </template>
 
   <script type="module" src="/static/analytics.js"></script>
