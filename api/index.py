@@ -773,6 +773,70 @@ async def _call_minimax(system_prompt: str, user_block: str) -> Optional[Feedbac
     )
 
 
+async def _call_minimax_diagnosis(
+    system_prompt: str, user_block: str
+) -> Optional[DeepDiagnosisPayload]:
+    """레거시 MiniMax 직접 호출 기반 심층 진단. 실패 시 None 반환."""
+    api_key = os.environ.get("MINIMAX_API_KEY")
+    if not api_key:
+        logger.warning("MiniMax diagnosis skip: MINIMAX_API_KEY is not configured")
+        return None
+
+    base_url = os.environ.get("MINIMAX_BASE_URL", MINIMAX_DEFAULT_BASE_URL).rstrip("/")
+    model = os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL)
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_block},
+        ],
+        "max_tokens": DEEP_DIAGNOSIS_MAX_TOKENS,
+        "temperature": 0.2,
+        "top_p": 0.9,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        started_at = time.perf_counter()
+        async with httpx.AsyncClient(timeout=PRIMARY_TIMEOUT_SECONDS) as client:
+            response = await client.post(
+                f"{base_url}/text/chatcompletion_v2",
+                headers=headers,
+                json=payload,
+            )
+        elapsed = time.perf_counter() - started_at
+        logger.info("MiniMax diagnosis model=%s responded in %.2fs", model, elapsed)
+        response.raise_for_status()
+        body = response.json()
+        base_resp = body.get("base_resp") or {}
+        if base_resp.get("status_code", 0) not in (0, None):
+            logger.warning("MiniMax diagnosis fallback: base_resp not ok: %s", base_resp)
+            return None
+        choices = body.get("choices") or []
+        if not choices:
+            logger.warning("MiniMax diagnosis fallback: empty choices in response")
+            return None
+        raw_content = choices[0].get("message", {}).get("content", "")
+        if isinstance(raw_content, list):
+            content = "\n".join(
+                item.get("text", "") if isinstance(item, dict) else str(item)
+                for item in raw_content
+            )
+        else:
+            content = str(raw_content or "")
+        result = _parse_diagnosis_json(content)
+        if _has_forbidden_diagnosis(result):
+            logger.info("MiniMax diagnosis response contained forbidden characters; scrubbing")
+            result = _scrub_diagnosis_payload(result)
+        return result
+    except Exception:
+        logger.exception("MiniMax diagnosis model=%s call failed: %r", model, user_block[:120])
+        return None
+
+
 async def _call_openrouter(system_prompt: str, user_block: str) -> Optional[FeedbackPayload]:
     """OpenRouter MiniMax M2.7 1차 provider. OpenAI 호환 엔드포인트."""
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -1228,6 +1292,10 @@ async def health() -> dict:
             "configured": bool(os.environ.get("OPENROUTER_API_KEY")),
             "model": os.environ.get("OPENROUTER_MODEL", OPENROUTER_DEFAULT_MODEL),
         },
+        "minimax": {
+            "configured": bool(os.environ.get("MINIMAX_API_KEY")),
+            "model": os.environ.get("MINIMAX_MODEL", MINIMAX_DEFAULT_MODEL),
+        },
         "fallback": {
             "configured": bool(os.environ.get("NVIDIA_API_KEY")),
             "model": os.environ.get("NVIDIA_BASE_MODEL", NVIDIA_DEFAULT_MODEL),
@@ -1244,10 +1312,13 @@ async def analyze(entry: DiaryEntry, request: Request) -> JSONResponse:
         return JSONResponse(CRISIS_RESPONSE)
 
     user_block = _build_user_block(entry)
-    # 1차: OpenRouter MiniMax M2.7 → 2차: NVIDIA MiniMax M2.7 → 최후: 템플릿
+    # 1차: OpenRouter → 2차: MiniMax direct → 3차: NVIDIA → 최후: 템플릿
     result = await _call_openrouter(SYSTEM_PROMPT, user_block)
     if result is None:
-        logger.info("Primary provider failed; trying NVIDIA fallback")
+        logger.info("Primary provider failed; trying direct MiniMax")
+        result = await _call_minimax(SYSTEM_PROMPT, user_block)
+    if result is None:
+        logger.info("Direct MiniMax failed; trying NVIDIA fallback")
         result = await _call_nvidia(SYSTEM_PROMPT, user_block)
     if result is None:
         logger.info("All providers failed; returning template fallback")
@@ -1276,7 +1347,10 @@ async def deep_diagnosis(payload: DeepDiagnosisRequest, request: Request) -> JSO
 
     result = await _call_openrouter_diagnosis(DEEP_DIAGNOSIS_SYSTEM_PROMPT, user_block)
     if result is None:
-        logger.info("Deep diagnosis: primary provider failed; trying NVIDIA fallback")
+        logger.info("Deep diagnosis: primary provider failed; trying direct MiniMax")
+        result = await _call_minimax_diagnosis(DEEP_DIAGNOSIS_SYSTEM_PROMPT, user_block)
+    if result is None:
+        logger.info("Deep diagnosis: direct MiniMax failed; trying NVIDIA fallback")
         result = await _call_nvidia_diagnosis(DEEP_DIAGNOSIS_SYSTEM_PROMPT, user_block)
     if result is None:
         logger.info("Deep diagnosis: all providers failed; returning template fallback")
@@ -1375,7 +1449,10 @@ async def leader_analyze(entry: LeaderEntry, request: Request) -> JSONResponse:
     user_block = _build_leader_user_block(entry)
     result = await _call_openrouter(LEADER_SYSTEM_PROMPT, user_block)
     if result is None:
-        logger.info("Leader: primary provider failed; trying NVIDIA fallback")
+        logger.info("Leader: primary provider failed; trying direct MiniMax")
+        result = await _call_minimax(LEADER_SYSTEM_PROMPT, user_block)
+    if result is None:
+        logger.info("Leader: direct MiniMax failed; trying NVIDIA fallback")
         result = await _call_nvidia(LEADER_SYSTEM_PROMPT, user_block)
     if result is None:
         logger.info("Leader: all providers failed; returning template fallback")

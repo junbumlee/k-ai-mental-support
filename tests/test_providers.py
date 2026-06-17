@@ -24,6 +24,10 @@ def test_call_minimax_returns_none_without_api_key():
     assert run(api_index._call_minimax("system", "user")) is None
 
 
+def test_call_minimax_diagnosis_returns_none_without_api_key():
+    assert run(api_index._call_minimax_diagnosis("system", "user")) is None
+
+
 def test_call_openrouter_returns_none_without_api_key():
     assert run(api_index._call_openrouter("system", "user")) is None
 
@@ -184,6 +188,94 @@ def test_call_minimax_model_handles_http_or_parse_errors(monkeypatch):
     monkeypatch.setattr(api_index.httpx, "AsyncClient", FailingAsyncClient)
 
     assert run(api_index._call_minimax_model("system", "user", "model", 3)) is None
+
+
+def test_call_minimax_diagnosis_success_with_list_content(monkeypatch):
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers, json):
+            assert url == "https://api.minimaxi.chat/v1/text/chatcompletion_v2"
+            assert headers["Authorization"] == "Bearer minimax-key"
+            assert json["model"] == api_index.MINIMAX_DEFAULT_MODEL
+            assert json["max_tokens"] == api_index.DEEP_DIAGNOSIS_MAX_TOKENS
+            return FakeResponse(
+                {
+                    "base_resp": {"status_code": 0},
+                    "choices": [
+                        {
+                            "message": {
+                                "content": [
+                                    {
+                                        "text": '{"title":"스트레스 深층 리포트","summary":"성과 압박과 보고 후 긴장이 반복됩니다.",'
+                                    },
+                                    {
+                                        "text": '"key_patterns":["보고 질문을 전체 평가로 해석합니다"],'
+                                        '"risk_signals":["퇴근 후에도 긴장이 남습니다"],'
+                                        '"protective_factors":["기록을 남기고 있습니다"],'
+                                        '"action_plan":["다음 보고 전 확인 질문을 준비합니다"],'
+                                        '"reflection_questions":["무엇을 사실로 확인했나요?"]}'
+                                    },
+                                ]
+                            }
+                        }
+                    ],
+                }
+            )
+
+    monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
+    monkeypatch.setattr(api_index.httpx, "AsyncClient", FakeAsyncClient)
+
+    result = run(api_index._call_minimax_diagnosis("system", "user"))
+
+    assert result.mode == "diagnosis"
+    assert result.title == "스트레스 층 리포트"
+    assert result.summary == "성과 압박과 보고 후 긴장이 반복됩니다."
+
+
+def test_call_minimax_diagnosis_returns_none_for_bad_payloads(monkeypatch):
+    class BadBaseRespClient:
+        def __init__(self, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers, json):
+            return FakeResponse({"base_resp": {"status_code": 2061}})
+
+    class EmptyChoicesClient(BadBaseRespClient):
+        async def post(self, url, headers, json):
+            return FakeResponse({"base_resp": {"status_code": 0}, "choices": []})
+
+    class InvalidJsonClient(BadBaseRespClient):
+        async def post(self, url, headers, json):
+            return FakeResponse(
+                {
+                    "base_resp": {"status_code": 0},
+                    "choices": [{"message": {"content": "not json"}}],
+                }
+            )
+
+    monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
+    monkeypatch.setattr(api_index.httpx, "AsyncClient", BadBaseRespClient)
+    assert run(api_index._call_minimax_diagnosis("system", "user")) is None
+
+    monkeypatch.setattr(api_index.httpx, "AsyncClient", EmptyChoicesClient)
+    assert run(api_index._call_minimax_diagnosis("system", "user")) is None
+
+    monkeypatch.setattr(api_index.httpx, "AsyncClient", InvalidJsonClient)
+    assert run(api_index._call_minimax_diagnosis("system", "user")) is None
 
 
 def test_call_nvidia_returns_none_without_api_key():

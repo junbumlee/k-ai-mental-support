@@ -54,6 +54,7 @@ def test_public_health_and_me_without_session(client):
         "ok": True,
         "auth": {"google_configured": False},
         "primary": {"configured": False, "model": api_index.OPENROUTER_DEFAULT_MODEL},
+        "minimax": {"configured": False, "model": api_index.MINIMAX_DEFAULT_MODEL},
         "fallback": {"configured": False, "model": api_index.NVIDIA_DEFAULT_MODEL},
     }
 
@@ -227,6 +228,7 @@ def test_analyze_crisis_short_circuits_llm(client, complete_profile, monkeypatch
         raise AssertionError("LLM provider should not be called for crisis input")
 
     monkeypatch.setattr(api_index, "_call_openrouter", fail_if_called)
+    monkeypatch.setattr(api_index, "_call_minimax", fail_if_called)
     monkeypatch.setattr(api_index, "_call_nvidia", fail_if_called)
     set_session_cookie(client, profile=complete_profile)
 
@@ -254,6 +256,7 @@ def test_analyze_returns_primary_feedback_without_fallback(client, complete_prof
         raise AssertionError("Fallback provider should not be called")
 
     monkeypatch.setattr(api_index, "_call_openrouter", primary)
+    monkeypatch.setattr(api_index, "_call_minimax", fail_if_called)
     monkeypatch.setattr(api_index, "_call_nvidia", fail_if_called)
     set_session_cookie(client, profile=complete_profile)
 
@@ -269,6 +272,7 @@ def test_analyze_returns_template_fallback_when_all_providers_fail(client, compl
         return None
 
     monkeypatch.setattr(api_index, "_call_openrouter", unavailable)
+    monkeypatch.setattr(api_index, "_call_minimax", unavailable)
     monkeypatch.setattr(api_index, "_call_nvidia", unavailable)
     set_session_cookie(client, profile=complete_profile)
 
@@ -297,6 +301,7 @@ def test_deep_diagnosis_crisis_short_circuits_llm(client, complete_profile, monk
         raise AssertionError("LLM provider should not be called for crisis input")
 
     monkeypatch.setattr(api_index, "_call_openrouter_diagnosis", fail_if_called)
+    monkeypatch.setattr(api_index, "_call_minimax_diagnosis", fail_if_called)
     monkeypatch.setattr(api_index, "_call_nvidia_diagnosis", fail_if_called)
     set_session_cookie(client, profile=complete_profile)
 
@@ -325,6 +330,7 @@ def test_deep_diagnosis_returns_primary_report_without_fallback(client, complete
         raise AssertionError("Fallback provider should not be called")
 
     monkeypatch.setattr(api_index, "_call_openrouter_diagnosis", primary)
+    monkeypatch.setattr(api_index, "_call_minimax_diagnosis", fail_if_called)
     monkeypatch.setattr(api_index, "_call_nvidia_diagnosis", fail_if_called)
     set_session_cookie(client, profile=complete_profile)
 
@@ -336,11 +342,43 @@ def test_deep_diagnosis_returns_primary_report_without_fallback(client, complete
     assert len(response.json()["action_plan"]) == 3
 
 
+def test_deep_diagnosis_uses_minimax_when_openrouter_unavailable(client, complete_profile, monkeypatch):
+    async def unavailable(*args, **kwargs):
+        return None
+
+    async def direct_minimax(*args, **kwargs):
+        return api_index.DeepDiagnosisPayload(
+            mode="diagnosis",
+            title="MiniMax 심층 리포트",
+            summary="OpenRouter가 없어도 기존 MiniMax direct 키로 심층 진단을 생성합니다.",
+            key_patterns=["성과 압박 기록이 반복됩니다"],
+            risk_signals=["업무 후 긴장이 남습니다"],
+            protective_factors=["기록을 남기고 있습니다"],
+            action_plan=["다음 보고 전 확인 질문을 준비합니다"],
+            reflection_questions=["무엇을 사실로 확인했나요?"],
+        )
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("NVIDIA provider should not be called when MiniMax succeeds")
+
+    monkeypatch.setattr(api_index, "_call_openrouter_diagnosis", unavailable)
+    monkeypatch.setattr(api_index, "_call_minimax_diagnosis", direct_minimax)
+    monkeypatch.setattr(api_index, "_call_nvidia_diagnosis", fail_if_called)
+    set_session_cookie(client, profile=complete_profile)
+
+    response = client.post("/api/deep-diagnosis", json=deep_diagnosis_payload())
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "diagnosis"
+    assert response.json()["title"] == "MiniMax 심층 리포트"
+
+
 def test_deep_diagnosis_returns_template_fallback_when_all_providers_fail(client, complete_profile, monkeypatch):
     async def unavailable(*args, **kwargs):
         return None
 
     monkeypatch.setattr(api_index, "_call_openrouter_diagnosis", unavailable)
+    monkeypatch.setattr(api_index, "_call_minimax_diagnosis", unavailable)
     monkeypatch.setattr(api_index, "_call_nvidia_diagnosis", unavailable)
     set_session_cookie(client, profile=complete_profile)
 
@@ -372,6 +410,7 @@ def test_leader_endpoint_uses_fallback_provider(client, complete_profile, monkey
         )
 
     monkeypatch.setattr(api_index, "_call_openrouter", primary_unavailable)
+    monkeypatch.setattr(api_index, "_call_minimax", primary_unavailable)
     monkeypatch.setattr(api_index, "_call_nvidia", fallback)
     set_session_cookie(client, profile=complete_profile)
 
@@ -401,6 +440,7 @@ def test_leader_endpoint_requires_session_and_short_circuits_crisis(client, comp
         raise AssertionError("LLM provider should not be called for crisis input")
 
     monkeypatch.setattr(api_index, "_call_openrouter", fail_if_called)
+    monkeypatch.setattr(api_index, "_call_minimax", fail_if_called)
     monkeypatch.setattr(api_index, "_call_nvidia", fail_if_called)
     set_session_cookie(client, profile=complete_profile)
 
